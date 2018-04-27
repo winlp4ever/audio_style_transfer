@@ -24,7 +24,7 @@ axs[1].plot(encoding[0])
 axs[1].set_title('NSynth Encoding')
 
 
-fastgen.synthesize(encoding, save_paths='gen_' + filename,
+fastgen.synthesize(encoding, save_paths='./nsynth/test_data/gen_' + filename,
                    checkpoint_path='./model/wavenet-ckpt/model.ckpt-200000',
                    samples_per_save=sample_length)
 

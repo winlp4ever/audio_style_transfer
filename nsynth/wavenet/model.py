@@ -214,7 +214,7 @@ class Config(object):
         ###
         # The Non-Causal Temporal Encoder.
         ###
-        en = masked.conv1d(
+        enc = masked.conv1d(
             x_scaled,
             causal=False,
             num_filters=ae_width,
@@ -223,28 +223,28 @@ class Config(object):
 
         for num_layer in range(ae_num_layers):
             dilation = 2 ** (num_layer % ae_num_stages)
-            d = tf.nn.relu(en)
-            d = masked.conv1d(
-                d,
+            d_enc = tf.nn.relu(enc)
+            d_enc = masked.conv1d(
+                d_enc,
                 causal=False,
                 num_filters=ae_width,
                 filter_length=ae_filter_length,
                 dilation=dilation,
                 name='ae_dilatedconv_%d' % (num_layer + 1))
-            d = tf.nn.relu(d)
-            en += masked.conv1d(
-                d,
+            d_enc = tf.nn.relu(d_enc)
+            enc += masked.conv1d(
+                d_enc,
                 num_filters=ae_width,
                 filter_length=1,
                 name='ae_res_%d' % (num_layer + 1))
 
-        en = masked.conv1d(
-            en,
+        enc = masked.conv1d(
+            enc,
             num_filters=self.ae_bottleneck_width,
             filter_length=1,
             name='ae_bottleneck')
-        en = masked.pool1d(en, self.ae_hop_length, name='ae_pool', mode='avg')
-        encoding = en
+        enc = masked.pool1d(enc, self.ae_hop_length, name='ae_pool', mode='avg')
+        encoding = enc
 
         ###
         # The WaveNet Decoder.
@@ -260,35 +260,35 @@ class Config(object):
         # Residual blocks with skip connections.
         for i in range(num_layers):
             dilation = 2 ** (i % num_stages)
-            d = masked.conv1d(
+            d_enc = masked.conv1d(
                 l,
                 num_filters=2 * width,
                 filter_length=filter_length,
                 dilation=dilation,
                 name='dilatedconv_%d' % (i + 1))
-            d = self._condition(d,
+            d_enc = self._condition(d_enc,
                                 masked.conv1d(
-                                    en,
+                                    enc,
                                     num_filters=2 * width,
                                     filter_length=1,
                                     name='cond_map_%d' % (i + 1)))
 
-            assert d.get_shape().as_list()[2] % 2 == 0
-            m = d.get_shape().as_list()[2] // 2
-            d_sigmoid = tf.sigmoid(d[:, :, :m])
-            d_tanh = tf.tanh(d[:, :, m:])
-            d = d_sigmoid * d_tanh
+            assert d_enc.get_shape().as_list()[2] % 2 == 0
+            m = d_enc.get_shape().as_list()[2] // 2
+            d_sigmoid = tf.sigmoid(d_enc[:, :, :m])
+            d_tanh = tf.tanh(d_enc[:, :, m:])
+            d_enc = d_sigmoid * d_tanh
 
             l += masked.conv1d(
-                d, num_filters=width, filter_length=1, name='res_%d' % (i + 1))
+                d_enc, num_filters=width, filter_length=1, name='res_%d' % (i + 1))
             s += masked.conv1d(
-                d, num_filters=skip_width, filter_length=1, name='skip_%d' % (i + 1))
+                d_enc, num_filters=skip_width, filter_length=1, name='skip_%d' % (i + 1))
 
         s = tf.nn.relu(s)
         s = masked.conv1d(s, num_filters=skip_width, filter_length=1, name='out1')
         s = self._condition(s,
                             masked.conv1d(
-                                en,
+                                enc,
                                 num_filters=skip_width,
                                 filter_length=1,
                                 name='cond_map_out1'))
