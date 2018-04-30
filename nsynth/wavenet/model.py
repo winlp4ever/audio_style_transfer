@@ -155,6 +155,9 @@ class Config(object):
         self.ae_bottleneck_width = 16
         self.train_path = train_path
 
+        # information to be extracted
+        self.extracts = []
+
     def get_batch(self, batch_size):
         assert self.train_path is not None
         data_train = reader.NSynthDataset(self.train_path, is_training=True)
@@ -232,6 +235,12 @@ class Config(object):
                 dilation=dilation,
                 name='ae_dilatedconv_%d' % (num_layer + 1))
             d_enc = tf.nn.relu(d_enc)
+
+            # ADD-----
+            d_enc_ = d_enc
+            self.extracts.append(d_enc_)
+            # --------
+
             enc += masked.conv1d(
                 d_enc,
                 num_filters=ae_width,

@@ -1,8 +1,13 @@
 import tensorflow as tf
+import numpy as np
 from nsynth.wavenet.model import Config
+from nsynth import utils
 from nsynth.wavenet.fastgen import load_nsynth
+from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
 
-def extract_layers(checkpoint_path):
+def extract_layers(checkpoint_path, wav_data, batch_size=1, sample_length=64000):
+    print(wav_data.shape)
+
     session_config = tf.ConfigProto(allow_soft_placement=True)
     session_config.gpu_options.allow_growth = True
     with tf.Graph().as_default(), tf.Session(config=session_config) as sess:
@@ -12,7 +17,14 @@ def extract_layers(checkpoint_path):
             x = tf.placeholder(tf.float32, shape=[1, 64000])
             graph = config.build({"wav": x}, is_training=False)
             graph.update({"X": x})
-        # net = load_nsynth(batch_size=batch_size, sample_length=40000)
+
+
+        hop_length = config.ae_hop_length
+        wav_data, sample_length = utils.trim_for_encoding(wav_data, sample_length, hop_length)
+        wav_data = np.array([wav_data])
+        np.resize(wav_data, (1, 64000))
+        print(wav_data.shape)
+
         saver = tf.train.Saver()
         saver.restore(sess, checkpoint_path)
         writer = tf.summary.FileWriter("output", sess.graph)
@@ -22,7 +34,16 @@ def extract_layers(checkpoint_path):
 
         layer = sess.graph.get_tensor_by_name('dilatedconv_29/W:0')
         print(layer.eval())
+        print_tensors_in_checkpoint_file(file_name=checkpoint_path, tensor_name='', all_tensors=False, all_tensor_names=True)
 
+        encodings = sess.run(config.extracts[11], feed_dict={graph["X"]: wav_data})
+        print(type(encodings))
+        return encodings
 
 if __name__=='__main__':
-    extract_layers('./nsynth/model/wavenet-ckpt/model.ckpt-200000')
+    filename = './test_data/2.wav'
+    sampling_rate = 16000
+    audio = utils.load_audio(filename, sample_length=64000, sr=sampling_rate)
+
+    encodings = extract_layers('./nsynth/model/wavenet-ckpt/model.ckpt-200000', audio)
+    print(encodings.shape)

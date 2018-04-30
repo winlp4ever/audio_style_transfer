@@ -37,7 +37,7 @@ tf.app.flags.DEFINE_string("checkpoint_path", "",
                            "A path to the checkpoint. If not given, the latest "
                            "checkpoint in `expdir` will be used.")
 tf.app.flags.DEFINE_string("tfrecord_path", "",
-                           "Path to nsynth-{train, valid, test}.tfrecord.")
+                           "Path to nsynth-{train, valid, test_data}.tfrecord.")
 tf.app.flags.DEFINE_string("savedir", "", "Where to save the embeddings.")
 tf.app.flags.DEFINE_string("log", "INFO",
                            "The threshold for what messages will be logged."
