@@ -247,11 +247,16 @@ class Config(object):
                 filter_length=1,
                 name='ae_res_%d' % (num_layer + 1))
 
+        enc_ = enc
+        self.extracts.append(enc_)
+
         enc = masked.conv1d(
             enc,
             num_filters=self.ae_bottleneck_width,
             filter_length=1,
             name='ae_bottleneck')
+
+
         enc = masked.pool1d(enc, self.ae_hop_length, name='ae_pool', mode='avg')
         encoding = enc
 

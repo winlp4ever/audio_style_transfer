@@ -5,12 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="91ba5b7c-3564-4f5a-bf46-793b00ccb3e0" name="Default" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/audio_work.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/audio_work.iml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/demos.py" beforeDir="false" afterPath="$PROJECT_DIR$/demos.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/nsynth/baseline/save_embeddings.py" beforeDir="false" afterPath="$PROJECT_DIR$/nsynth/baseline/save_embeddings.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/nsynth/wavenet/model.py" beforeDir="false" afterPath="$PROJECT_DIR$/nsynth/wavenet/model.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/nsynth/wavenet/train.py" beforeDir="false" afterPath="$PROJECT_DIR$/nsynth/wavenet/train.py" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="TRACKING_ENABLED" value="true" />
@@ -36,8 +35,8 @@
       <file leaf-file-name="demos.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/demos.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="504">
-              <caret line="21" column="41" lean-forward="true" selection-start-line="21" selection-start-column="41" selection-end-line="21" selection-end-column="41" />
+            <state relative-caret-position="675">
+              <caret line="46" column="77" selection-start-line="44" selection-start-column="4" selection-end-line="46" selection-end-column="77" />
               <folding>
                 <element signature="e#0#23#0" expanded="true" />
               </folding>
@@ -45,20 +44,41 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="inspect_checkpoint.py" pinned="false" current-in-tab="false">
-        <entry file="file://$USER_HOME$/anaconda3/envs/tensorflow/lib/python3.5/site-packages/tensorflow/python/tools/inspect_checkpoint.py">
+      <file leaf-file-name="dfeatinter.py" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/dfeatinter.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="480">
-              <caret line="31" column="4" selection-start-line="31" selection-start-column="4" selection-end-line="31" selection-end-column="4" />
+            <state relative-caret-position="219">
+              <caret line="41" column="39" selection-start-line="41" selection-start-column="39" selection-end-line="41" selection-end-column="39" />
+              <folding>
+                <element signature="e#0#23#0" expanded="true" />
+              </folding>
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="model.py" pinned="false" current-in-tab="true">
+      <file leaf-file-name=".gitignore" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/.gitignore">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="96">
+              <caret line="4" column="6" selection-start-line="4" selection-start-column="6" selection-end-line="4" selection-end-column="6" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="train.py" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/nsynth/wavenet/train.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="-2517">
+              <caret line="8" column="27" selection-start-line="8" selection-start-column="27" selection-end-line="8" selection-end-column="27" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="model.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/nsynth/wavenet/model.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="456">
-              <caret line="253" column="33" lean-forward="true" selection-start-line="253" selection-start-column="33" selection-end-line="253" selection-end-column="33" />
+            <state relative-caret-position="291">
+              <caret line="313" column="27" selection-start-line="313" selection-start-column="27" selection-end-line="313" selection-end-column="27" />
               <folding>
                 <element signature="e#671#709#0" expanded="true" />
               </folding>
@@ -66,20 +86,11 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="nsynth_generate.py" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/nsynth/wavenet/nsynth_generate.py">
+      <file leaf-file-name="masked.py" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/nsynth/wavenet/masked.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="456">
-              <caret line="19" column="5" selection-start-line="19" selection-start-column="5" selection-end-line="19" selection-end-column="5" />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="nsynth_save_embeddings.py" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/nsynth/wavenet/nsynth_save_embeddings.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="576">
-              <caret line="24" column="5" selection-start-line="24" selection-start-column="5" selection-end-line="24" selection-end-column="5" />
+            <state relative-caret-position="-189">
+              <caret line="76" column="6" selection-start-line="76" selection-start-column="6" selection-end-line="76" selection-end-column="6" />
             </state>
           </provider>
         </entry>
@@ -105,23 +116,11 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="latent_transform.py" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/latent_transform.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="192">
-              <caret line="10" column="21" selection-start-line="10" selection-start-column="21" selection-end-line="10" selection-end-column="21" />
-              <folding>
-                <element signature="e#0#23#0" expanded="true" />
-              </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
       <file leaf-file-name="fastgen.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/nsynth/wavenet/fastgen.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="120">
-              <caret line="65" column="27" selection-start-line="65" selection-start-column="27" selection-end-line="65" selection-end-column="27" />
+            <state relative-caret-position="2496">
+              <caret line="111" column="30" selection-start-line="111" selection-start-column="30" selection-end-line="111" selection-end-column="30" />
               <folding>
                 <element signature="e#853#862#0" expanded="true" />
               </folding>
@@ -138,6 +137,11 @@
       </list>
     </option>
   </component>
+  <component name="FindInProjectRecents">
+    <findStrings>
+      <find>encoding</find>
+    </findStrings>
+  </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
@@ -145,7 +149,6 @@
     <option name="CHANGED_PATHS">
       <list>
         <option value="$PROJECT_DIR$/nsynth/wavenet/h512_bo16.py" />
-        <option value="$PROJECT_DIR$/nsynth/wavenet/train.py" />
         <option value="$PROJECT_DIR$/nsynth/wavenet/nsynth_generate.py" />
         <option value="$PROJECT_DIR$/nsynth/wavenet/nsynth_save_embeddings.py" />
         <option value="$PROJECT_DIR$/nsynth/reader.py" />
@@ -156,8 +159,10 @@
         <option value="$PROJECT_DIR$/nsynth/how_to_use.py" />
         <option value="$PROJECT_DIR$/nsynth/wavenet/masked.py" />
         <option value="$PROJECT_DIR$/nsynth/wavenet/model.py" />
-        <option value="$PROJECT_DIR$/.gitignore" />
         <option value="$PROJECT_DIR$/demos.py" />
+        <option value="$PROJECT_DIR$/nsynth/wavenet/train.py" />
+        <option value="$PROJECT_DIR$/dfeatinter.py" />
+        <option value="$PROJECT_DIR$/.gitignore" />
       </list>
     </option>
   </component>
@@ -186,6 +191,19 @@
               <item name="audio_style_transfer" type="b2602c69:ProjectViewProjectNode" />
               <item name="audio_style_transfer" type="462c0819:PsiDirectoryNode" />
               <item name="nsynth" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="audio_style_transfer" type="b2602c69:ProjectViewProjectNode" />
+              <item name="audio_style_transfer" type="462c0819:PsiDirectoryNode" />
+              <item name="nsynth" type="462c0819:PsiDirectoryNode" />
+              <item name="model" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="audio_style_transfer" type="b2602c69:ProjectViewProjectNode" />
+              <item name="audio_style_transfer" type="462c0819:PsiDirectoryNode" />
+              <item name="nsynth" type="462c0819:PsiDirectoryNode" />
+              <item name="model" type="462c0819:PsiDirectoryNode" />
+              <item name="wavenet-ckpt" type="462c0819:PsiDirectoryNode" />
             </path>
             <path>
               <item name="audio_style_transfer" type="b2602c69:ProjectViewProjectNode" />
@@ -220,7 +238,7 @@
       </list>
     </option>
   </component>
-  <component name="RunManager" selected="Python.demos">
+  <component name="RunManager" selected="Python.dfeatinter">
     <configuration name="demos" type="PythonConfigurationType" factoryName="Python" temporary="true">
       <module name="audio_work" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -234,6 +252,24 @@
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
       <option name="SCRIPT_NAME" value="$PROJECT_DIR$/demos.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+    </configuration>
+    <configuration name="dfeatinter" type="PythonConfigurationType" factoryName="Python" temporary="true">
+      <module name="audio_work" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/dfeatinter.py" />
       <option name="PARAMETERS" value="" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
@@ -260,9 +296,11 @@
     <list>
       <item itemvalue="Python.how_to_use" />
       <item itemvalue="Python.demos" />
+      <item itemvalue="Python.dfeatinter" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Python.dfeatinter" />
         <item itemvalue="Python.demos" />
         <item itemvalue="Python.how_to_use" />
       </list>
@@ -285,16 +323,16 @@
     <frame x="0" y="3" width="1920" height="1077" extended-state="6" />
     <editor active="true" />
     <layout>
-      <window_info content_ui="combo" id="Project" order="0" visible="true" weight="0.11875" />
+      <window_info active="true" content_ui="combo" id="Project" order="0" visible="true" weight="0.13125" />
       <window_info anchor="bottom" id="TODO" order="6" />
       <window_info anchor="bottom" id="Event Log" order="7" side_tool="true" />
+      <window_info anchor="bottom" id="Run" order="2" visible="true" weight="0.2528978" />
       <window_info anchor="bottom" id="Version Control" order="7" />
       <window_info anchor="bottom" id="Python Console" order="7" />
-      <window_info active="true" anchor="bottom" id="Run" order="2" visible="true" weight="0.2528978" />
       <window_info id="Structure" order="1" side_tool="true" weight="0.25" />
       <window_info anchor="bottom" id="Terminal" order="7" />
-      <window_info id="Favorites" order="2" side_tool="true" />
       <window_info anchor="bottom" id="Debug" order="3" weight="0.4" />
+      <window_info id="Favorites" order="2" side_tool="true" />
       <window_info anchor="right" content_ui="combo" id="Hierarchy" order="2" weight="0.25" />
       <window_info anchor="right" id="Commander" internal_type="SLIDING" order="0" type="SLIDING" weight="0.4" />
       <window_info anchor="right" id="Ant Build" order="1" weight="0.25" />
@@ -313,6 +351,16 @@
     </breakpoint-manager>
   </component>
   <component name="editorHistoryManager">
+    <entry file="file://$PROJECT_DIR$/nsynth/wavenet/model.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="7320">
+          <caret line="314" column="26" selection-start-line="314" selection-start-column="26" selection-end-line="314" selection-end-column="26" />
+          <folding>
+            <element signature="e#671#709#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/nsynth/how_to_use.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="48">
@@ -375,9 +423,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="192">
           <caret line="10" column="21" selection-start-line="10" selection-start-column="21" selection-end-line="10" selection-end-column="21" />
-          <folding>
-            <element signature="e#0#23#0" expanded="true" />
-          </folding>
         </state>
       </provider>
     </entry>
@@ -463,9 +508,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="192">
           <caret line="10" column="21" selection-start-line="10" selection-start-column="21" selection-end-line="10" selection-end-column="21" />
-          <folding>
-            <element signature="e#0#23#0" expanded="true" />
-          </folding>
         </state>
       </provider>
     </entry>
@@ -551,9 +593,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="192">
           <caret line="10" column="21" selection-start-line="10" selection-start-column="21" selection-end-line="10" selection-end-column="21" />
-          <folding>
-            <element signature="e#0#23#0" expanded="true" />
-          </folding>
         </state>
       </provider>
     </entry>
@@ -608,9 +647,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="152">
           <caret line="10" column="21" selection-start-line="10" selection-start-column="21" selection-end-line="10" selection-end-column="21" />
-          <folding>
-            <element signature="e#0#23#0" expanded="true" />
-          </folding>
         </state>
       </provider>
     </entry>
@@ -629,16 +665,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="192">
           <caret line="10" column="21" selection-start-line="10" selection-start-column="21" selection-end-line="10" selection-end-column="21" />
-          <folding>
-            <element signature="e#0#23#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/nsynth/wavenet/train.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="304">
-          <caret line="28" column="22" selection-start-line="28" selection-start-column="22" selection-end-line="28" selection-end-column="22" />
         </state>
       </provider>
     </entry>
@@ -673,24 +699,37 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/nsynth/wavenet/masked.py">
+    <entry file="file://$PROJECT_DIR$/nsynth/wavenet/fastgen.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="3696">
-          <caret line="159" column="12" selection-start-line="159" selection-start-column="12" selection-end-line="159" selection-end-column="12" />
+        <state relative-caret-position="2496">
+          <caret line="111" column="30" selection-start-line="111" selection-start-column="30" selection-end-line="111" selection-end-column="30" />
+          <folding>
+            <element signature="e#853#862#0" expanded="true" />
+          </folding>
         </state>
       </provider>
     </entry>
     <entry file="file://$USER_HOME$/anaconda3/envs/tensorflow/lib/python3.5/site-packages/tensorflow/python/tools/inspect_checkpoint.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="480">
-          <caret line="31" column="4" selection-start-line="31" selection-start-column="4" selection-end-line="31" selection-end-column="4" />
+        <state relative-caret-position="274">
+          <caret line="51" column="35" lean-forward="true" selection-start-line="51" selection-start-column="35" selection-end-line="51" selection-end-column="35" />
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/.gitignore">
+    <entry file="file://$PROJECT_DIR$/nsynth/wavenet/masked.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="24">
-          <caret line="1" column="18" selection-start-line="1" selection-start-column="18" selection-end-line="1" selection-end-column="18" />
+        <state relative-caret-position="-189">
+          <caret line="76" column="6" selection-start-line="76" selection-start-column="6" selection-end-line="76" selection-end-column="6" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/nsynth/wavenet/model.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="291">
+          <caret line="313" column="27" selection-start-line="313" selection-start-column="27" selection-end-line="313" selection-end-column="27" />
+          <folding>
+            <element signature="e#671#709#0" expanded="true" />
+          </folding>
         </state>
       </provider>
     </entry>
@@ -704,33 +743,37 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/nsynth/wavenet/fastgen.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="120">
-          <caret line="65" column="27" selection-start-line="65" selection-start-column="27" selection-end-line="65" selection-end-column="27" />
-          <folding>
-            <element signature="e#853#862#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/demos.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="504">
-          <caret line="21" column="41" lean-forward="true" selection-start-line="21" selection-start-column="41" selection-end-line="21" selection-end-column="41" />
+        <state relative-caret-position="675">
+          <caret line="46" column="77" selection-start-line="44" selection-start-column="4" selection-end-line="46" selection-end-column="77" />
           <folding>
             <element signature="e#0#23#0" expanded="true" />
           </folding>
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/nsynth/wavenet/model.py">
+    <entry file="file://$PROJECT_DIR$/nsynth/wavenet/train.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="456">
-          <caret line="253" column="33" lean-forward="true" selection-start-line="253" selection-start-column="33" selection-end-line="253" selection-end-column="33" />
+        <state relative-caret-position="-2517">
+          <caret line="8" column="27" selection-start-line="8" selection-start-column="27" selection-end-line="8" selection-end-column="27" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/dfeatinter.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="219">
+          <caret line="41" column="39" selection-start-line="41" selection-start-column="39" selection-end-line="41" selection-end-column="39" />
           <folding>
-            <element signature="e#671#709#0" expanded="true" />
+            <element signature="e#0#23#0" expanded="true" />
           </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/.gitignore">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="96">
+          <caret line="4" column="6" selection-start-line="4" selection-start-column="6" selection-end-line="4" selection-end-column="6" />
         </state>
       </provider>
     </entry>
