@@ -4,3 +4,5 @@ test_data/*
 output/*
 data/*
 .idea/*
+*.pyc
+*.pyo
