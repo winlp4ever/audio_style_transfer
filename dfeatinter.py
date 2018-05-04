@@ -32,8 +32,31 @@ def extract_activations(checkpoint_path, layers, wav_data, sample_length=64000, 
         repres = np.vstack(activations)
     return repres
 
+def decode(serialized_example):
+    features = tf.parse_single_example(
+        serialized_example,
+        features={
+            "note_str": tf.FixedLenFeature([], dtype=tf.string),
+            "pitch": tf.FixedLenFeature([1], dtype=tf.int64),
+            "velocity": tf.FixedLenFeature([1], dtype=tf.int64),
+            "audio": tf.FixedLenFeature([64000], dtype=tf.float32),
+            "qualities": tf.FixedLenFeature([10], dtype=tf.int64),
+            "instrument_source": tf.FixedLenFeature([1], dtype=tf.int64),
+            "instrument_family": tf.FixedLenFeature([1], dtype=tf.int64),
+        }
+    )
+    return features
+
 def knn(wav_data, data_path, nb_voisins=10):
-    raise ValueError('to be completed!')
+    dataset = tf.data.TFRecordDataset([data_path]).map(decode)
+    iterator = dataset.make_one_shot_iterator()
+    next_ex = iterator.get_next()
+    S = []
+    T = []
+    with tf.Session() as sess:
+        try:
+            while True:
+
 
 def l_bfgs():
     raise ValueError('to be completed!')
