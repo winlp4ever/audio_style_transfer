@@ -3,3 +3,5 @@ nsynth/test_data/*
 test_data/*
 output/*
 data/*
+.idea/*
+*.pyc
