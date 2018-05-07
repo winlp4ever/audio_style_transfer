@@ -32,8 +32,13 @@ def extract_activations(checkpoint_path, layers, wav_data, sample_length=64000, 
         repres = np.vstack(activations)
     return repres
 
+def extr_acts(session=None, fr_tfrecord=False, wav_data=None, sample_length=64000):
+    assert session is not None
+    if fr_tfrecord==True:
+        wav_data=
+
 def decode(serialized_example):
-    features = tf.parse_single_example(
+    example = tf.parse_single_example(
         serialized_example,
         features={
             "note_str": tf.FixedLenFeature([], dtype=tf.string),
@@ -45,7 +50,7 @@ def decode(serialized_example):
             "instrument_family": tf.FixedLenFeature([1], dtype=tf.int64),
         }
     )
-    return features
+    return example
 
 def knn(wav_data, data_path, nb_voisins=10):
     dataset = tf.data.TFRecordDataset([data_path]).map(decode)
