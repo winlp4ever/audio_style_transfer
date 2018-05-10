@@ -61,6 +61,8 @@ def knn(wav_data, data_path, nb_voisins=10):
     with tf.Session() as sess:
         try:
             while True:
+                sess.run(next_ex)
+
 
 
 def l_bfgs():
