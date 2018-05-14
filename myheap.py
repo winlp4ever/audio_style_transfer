@@ -24,5 +24,5 @@ if __name__=='__main__':
     u.push((1, 'a'))
     u.push((3, 'b'))
     u.push((2, 'c'))
-    print(u[0])
+    print(len(u))
 

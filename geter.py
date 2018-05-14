@@ -81,24 +81,28 @@ def knn(tf_path, file_path, checkpoint_path, layers, k, sample_length=64000, sam
         knn = read_data(tf_path, lat_func, graph, wav_rep, k, sample_length, sampling_rate)
     return knn
 
-def transform(samples, targets, wav_rep, alpha):
+def transform(samples, targets, wav_rep, alpha=1.0):
     avg_s = np.mean(samples)
     avg_t = np.mean(targets)
     omega = avg_t - avg_s
     return wav_rep + alpha * omega
 
-
-def l_bfgs(f, nb_iter, sess, lat_func):
+def l_bfgs(loss, nb_iter, graph):
     x = tf.Variable(tf.random_normal([0, 256]), expected_shape=[1, 64000], name='regenerated_wav')
+    graph.update({'X': x})
 
-
-    loss = tf.norm(f, ord='euclidean')
     train_step = tf.contrib.opt.ScipyOptimizerInterface(
         loss,
+        var_list= [x],
         method='L-BFGS-B',
         options={'maxiter': nb_iter})
 
+    return train_step
 
+def get_output(config, layers, graph):
+    f = func_tens(config, layers)
+    loss = tf.nn.l2_loss(f)
+    train = l_bfgs(loss, nb_iter=10, graph=graph)
 
 if __name__=='__main__':
     tf_path = 'data/nsynth-valid.tfrecord'
