@@ -32,10 +32,18 @@ def extract_activations(checkpoint_path, layers, wav_data, sample_length=64000, 
         repres = np.vstack(activations)
     return repres
 
-def extr_acts(session=None, fr_tfrecord=False, wav_data=None, sample_length=64000):
+def extr_acts(session=None, fr_tfrecord=False, wav_data=None, datapath=None, sample_length=64000):
     assert session is not None
     if fr_tfrecord==True:
-        wav_data=
+        assert datapath is not None
+        dataset = tf.data.TFRecordDataset([datapath]).map(decode)
+        iterator = dataset.make_one_shot_iterator()
+        next_sample = iterator.get_next()
+        try:
+            while True:
+                wav = session.run(next_sample)
+                activations = []
+
 
 def decode(serialized_example):
     example = tf.parse_single_example(
