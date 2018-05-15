@@ -14,7 +14,7 @@ class DeepFeatInterp():
 
         config = Config()
         with tf.device("/gpu:0"):
-            x = tf.Variable(tf.random_normal([1, 64000], stddev=128), expected_shape=[1, 64000], trainable=False)
+            x = tf.placeholder(tf.float32, shape=[1, 64000])
             self.graph = config.build({'wav': x}, is_training=False)
             self.graph.update({'X': x})
 
@@ -38,7 +38,7 @@ class DeepFeatInterp():
 
     def load_wav(self, sess, file_path):
         wav = utils.load_audio(file_path, self.sample_length, self.sampling_rate)
-        wav = np.reshape(wav, [1, 64000])
+        wav = np.reshape(wav, [1, self.sample_length])
         acts = sess.run(self.lat_repr_tens, feed_dict={self.graph['X'] : wav})
         return wav, acts
 
@@ -47,27 +47,29 @@ class DeepFeatInterp():
         iterator = dataset.make_one_shot_iterator()
         ex = iterator.get_next()
 
-
         heap_1 = MyHeap(k)
         heap_2 = MyHeap(k)
 
         _, rep = self.load_wav(sess, file_path)
 
         try:
-            while len(heap_1) < 1 and len(heap_2) < 1:
+            while len(heap_1) < 1 or len(heap_2) < 1:
                 type_inst = sess.run(ex['instrument_source'])
 
                 if type_inst == type_1:
                     content = np.reshape(sess.run(ex['audio']), [1, 64000])
                     ex_rep = sess.run(self.lat_repr_tens, feed_dict={self.graph['X'] : content})
                     heap_1.push((-LA.norm(rep - ex_rep), ex_rep))
+                    print('heap_1 : {}'.format(len(heap_1)))
 
                 elif type_inst == type_2:
                     content = np.reshape(sess.run(ex['audio']), [1, 64000])
                     ex_rep = sess.run(self.lat_repr_tens, feed_dict={self.graph['X']: content})
                     heap_2.push((-LA.norm(rep - ex_rep), ex_rep))
+                    print('heap_2 : {}'.format(len(heap_2)))
         except tf.errors.OutOfRangeError:
             pass
+        print('ok')
         samples = [heap_1[i][1] for i in range(len(heap_1))]
         targets = [heap_2[i][1] for i in range(len(heap_2))]
         return rep, samples, targets
@@ -77,11 +79,13 @@ class DeepFeatInterp():
         return rep + alpha * (np.mean(heap_2) - np.mean(heap_1))
 
     def regenerate(self, sess, transform, nb_iter):
+        u = tf.Variable(tf.random_normal([1, 64000], stddev=128), dtype=float, name='regenerated_wav')
+        assign_op = tf.assign(self.graph['X'], u)
         loss = tf.nn.l2_loss(transform - self.lat_repr_tens)
 
         train = tf.contrib.opt.ScipyOptimizerInterface(
             loss,
-            var_list= [self.graph['X']],
+            var_list= [u],
             method='L-BFGS-B',
             options={'maxiter': nb_iter})
 
@@ -105,7 +109,7 @@ class DeepFeatInterp():
 
 if __name__=='__main__':
     tf_path = './data/nsynth-valid.tfrecord'
-    file_path = './nsynth/test_data/borrtex.wav'
+    file_path = './test_data/2.wav'
     checkpoint_path = './nsynth/model/wavenet-ckpt/model.ckpt-200000'
     layers = (9, 19, 29)
     k = 10
