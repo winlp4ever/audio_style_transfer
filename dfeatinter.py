@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 from nsynth.wavenet.model import Config
 from nsynth import utils
+import matplotlib.pyplot as plt
 from nsynth.wavenet.fastgen import load_nsynth
 from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
 from myheap import MyHeap
@@ -18,7 +19,7 @@ class DeepFeatInterp():
 
         config = Config()
         with tf.device("/gpu:0"):
-            x = tf.Variable(tf.random_normal(shape=[1, 64000], stddev=128), name='regenerated_wav')
+            x = tf.Variable(tf.random_normal(shape=[1, 64000], stddev=1.0), name='regenerated_wav')
             self.graph = config.build({'wav': x}, is_training=False)
             self.graph.update({'X': x})
 
@@ -56,12 +57,12 @@ class DeepFeatInterp():
         heap_1 = MyHeap(k)
         heap_2 = MyHeap(k)
 
-        _, rep = self.load_wav(sess, file_path)
+        wav, rep = self.load_wav(sess, file_path)
 
 
         try:
             i = 0
-            while True:
+            while True and i < 4000:
                 i+=1
                 type_inst = sess.run(ex['instrument_source'])
 
@@ -81,7 +82,7 @@ class DeepFeatInterp():
             pass
         samples = [heap_1[i][2] for i in range(len(heap_1))]
         targets = [heap_2[i][2] for i in range(len(heap_2))]
-        return rep, samples, targets
+        return wav, rep, samples, targets
 
     @staticmethod
     def transform(rep, heap_1, heap_2, alpha=1):
@@ -105,13 +106,13 @@ class DeepFeatInterp():
         with tf.Session(config=session_config) as sess:
             self.init_reload(sess)
 
-            acts, samples, targets = self.knn(sess, file_path, type_1, type_2, k)
+            wav, acts, samples, targets = self.knn(sess, file_path, type_1, type_2, k)
 
             transform = self.transform(acts, samples, targets)
 
-            regen = self.regenerate(sess, transform, nb_iter)
+            loss, regen = self.regenerate(sess, transform, nb_iter)
             print('ok')
-        return regen
+        return wav, regen, loss
 
 
 if __name__=='__main__':
@@ -121,5 +122,11 @@ if __name__=='__main__':
     layers = (9, 19, 29)
     k = 10
     deepfeat = DeepFeatInterp(tf_path, checkpoint_path, layers)
-    loss, regen = deepfeat.run(file_path, 0, 1, k=100, nb_iter=1000)
+    wav, regen, loss = deepfeat.run(file_path, 0, 1, k=100, nb_iter=int(1e8))
+    spec_wav = utils.specgram(wav)
+    spec_regen = utils.specgram(regen)
+    plt.plot(spec_wav)
+    plt.savefig('./tmp/wav.png')
+    plt.plot(spec_regen)
+    plt.savefig('./tmp/regen.png')
     print(loss)
