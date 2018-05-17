@@ -6,3 +6,4 @@ data/*
 .idea/*
 *.pyc
 *.pyo
+tmp/*
