@@ -206,6 +206,7 @@ def synthesize(encodings,
             audio_batch[:, sample_i] = audio[:, 0]
             if sample_i % 100 == 0:
                 tf.logging.info("Sample: %d" % sample_i)
+                print("Sample: %d" % sample_i)
             if sample_i % samples_per_save == 0:
                 save_batch(audio_batch, save_paths)
     save_batch(audio_batch, save_paths)
