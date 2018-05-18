@@ -13,10 +13,11 @@ from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoi
 from myheap import MyHeap
 from geter import decode
 import numpy.linalg as LA
-from itertools import count
+
 
 class DeepFeatInterp():
     def __init__(self, ref_datapath, model_path, layers, sample_length=64000, sampling_rate=16000, save_path=None):
+        assert save_path is not None
         self.sample_length = sample_length
         self.sampling_rate = sampling_rate
         self.save_path = save_path
@@ -61,7 +62,8 @@ class DeepFeatInterp():
         iterator = dataset.make_one_shot_iterator()
         ex = iterator.get_next()
 
-        heap_s, heap_t = MyHeap(k), MyHeap(k)
+        heap_s = [MyHeap(k) for i in range(6400)]
+        heap_t = [MyHeap(k) for i in range(6400)]
 
         wav, rep = self.load_wav(sess, file_path)
 
@@ -74,24 +76,30 @@ class DeepFeatInterp():
                 if type_inst == type_s:
                     content = np.reshape(sess.run(ex['audio']), [1, self.sample_length])
                     ex_rep = sess.run(self.lat_repr_tens, feed_dict={self.graph['X']: content})
-                    heap_s.push((-LA.norm(rep - ex_rep), i, ex_rep))
-                    print('samples- len {} - iterate {}'.format(len(heap_s), i))
+                    for j in range(64):
+                        cont = ex_rep[:, j*1000:(j+1)*1000,]
+                        heap_s[j].push((-LA.norm(rep[:, j * 1000: (j+1) * 1000,] - cont), i, cont))
+                    print('sources - shape {} - iterate {}'.format(len(heap_s[0]), i))
+
 
                 elif type_inst == type_t:
                     content = np.reshape(sess.run(ex['audio']), [1, self.sample_length])
                     ex_rep = sess.run(self.lat_repr_tens, feed_dict={self.graph['X']: content})
-                    heap_t.push((-LA.norm(rep - ex_rep), i, ex_rep))
-                    print('targets - len {} - iterate {}'.format(len(heap_t), i))
+                    for j in range(64):
+                        cont = ex_rep[:, j*1000:(j+1)*1000,]
+                        heap_t[j].push((-LA.norm(rep[:, j * 1000: (j+1) * 1000,] - cont), i, cont))
+                    print('targets - shape {} - iterate {}'.format(len(heap_t[0]), i))
 
         except tf.errors.OutOfRangeError:
             pass
-        samples = [heap_s[i][2] for i in range(len(heap_s))]
-        targets = [heap_t[i][2] for i in range(len(heap_t))]
-        return wav, rep, samples, targets
+
+        sources = [np.concatenate([heap_t[j][m][2] for j in range(64)], axis=1) for m in range(k)]
+        targets = [np.concatenate([heap_t[j][m][2] for j in range(64)], axis=1) for m in range(k)]
+        return wav, rep, sources, targets
 
     @staticmethod
-    def transform(rep, samples, targets, alpha=1):
-        return rep + alpha * (np.mean(targets, axis=0) - np.mean(samples, axis=0))
+    def transform(rep, samples, targets, alpha=1.0):
+        return rep + alpha * (np.mean(targets, axis=0) - np.mean(targets, axis=0))
 
     def regen_opt(self, sess, transform, nb_iter):
         '''
@@ -111,10 +119,8 @@ class DeepFeatInterp():
             options={'maxiter': nb_iter})
         train.minimize(sess)
 
-        audio = sess.run(self.graph['X'])
-        librosa.output.write_wav(self.save_path, audio, sr=self.sampling_rate)
-
-        print(sess.run(loss))
+        _, audio = sess.run([train, self.graph['X']])
+        librosa.output.write_wav(self.save_path, audio.T, sr=self.sampling_rate)
 
     def regen_aut(self, sess, wav, transform):
         '''
@@ -144,7 +150,7 @@ class DeepFeatInterp():
 
             wav, acts, samples, targets = self.knn(sess, file_path, type_s, type_t, k)
 
-            transform = self.transform(acts, samples, targets)
+            transform = self.transform(acts, samples, targets, alpha=1.0)
 
             if bfgs:
                 self.regen_opt(sess, transform, nb_iter)
@@ -157,9 +163,9 @@ class DeepFeatInterp():
 
 if __name__ == '__main__':
     tf_path = './data/nsynth-valid.tfrecord'
-    file_path = './test_data/gen_chad_0.wav'
+    file_path = './test_data/pap/flute.wav'
     checkpoint_path = './nsynth/model/wavenet-ckpt/model.ckpt-200000'
-    save_path = './tmp/save_file_f.wav'
-    layers = (9, 19, 29)
+    save_path = './tmp/flute_bass.wav'
+    layers = [9, 19, 24, 29, 30]
     deepfeat = DeepFeatInterp(tf_path, checkpoint_path, layers, save_path=save_path)
-    deepfeat.run(file_path, type_s=4, type_t=3, k=100, nb_iter=int(1e12), bfgs=False)
+    deepfeat.run(file_path, type_s=2, type_t=0, k=100, nb_iter=int(1e12), bfgs=False)
