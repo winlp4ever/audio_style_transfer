@@ -147,7 +147,7 @@ class DeepFeatInterp():
 
             wav, acts, samples, targets = self.knn(sess, file_path, type_s, type_t, k)
 
-            transform = self.transform(acts, samples, targets)
+            transform = self.transform(acts, samples, targets, alpha=0)
 
             if bfgs:
                 self.regen_opt(sess, transform, nb_iter)
@@ -160,9 +160,9 @@ class DeepFeatInterp():
 
 if __name__ == '__main__':
     tf_path = './data/nsynth-valid.tfrecord'
-    file_path = './test_data/gen_sun.wav'
+    file_path = './test_data/pia.wav'
     checkpoint_path = './nsynth/model/wavenet-ckpt/model.ckpt-200000'
-    save_path = './tmp/save_sun.wav'
+    save_path = './tmp/save_pia.wav'
     layers = (9, 19, 24, 29, 30)
     deepfeat = DeepFeatInterp(tf_path, checkpoint_path, layers, save_path=save_path)
-    deepfeat.run(file_path, type_s=4, type_t=3, k=10, nb_iter=int(1e12), bfgs=False)
+    deepfeat.run(file_path, type_s=0, type_t=3, k=10, nb_iter=int(1e12), bfgs=False)
