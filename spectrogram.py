@@ -85,6 +85,5 @@ def plotstft(audiopath, binsize=2**10, plotpath=None, colormap="jet"):
         
     plt.clf()
 
-plotstft('./test_data/gen_chad_0.wav')
-plotstft("./tmp/save_file.wav")
-plotstft('./tmp/save_file_f_u.wav')
+plotstft('./test_data/gen_pia.wav', plotpath='./tmp/gen_pia.png')
+plotstft('./tmp/save_pia.wav', plotpath='./tmp/save_pia.png')

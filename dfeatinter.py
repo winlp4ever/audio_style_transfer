@@ -62,39 +62,57 @@ class DeepFeatInterp():
         iterator = dataset.make_one_shot_iterator()
         ex = iterator.get_next()
 
-        heap_s, heap_t = MyHeap(k), MyHeap(k)
+        heap_s = MyHeap(k)
+        heap_t = MyHeap(k)
 
         wav, rep = self.load_wav(sess, file_path)
 
         try:
             i = 0
-            while True:
+            while len(heap_s) < 1 and len(heap_t) < 1:
                 i += 1
                 type_inst = sess.run(ex['instrument_family'])
 
                 if type_inst == type_s:
                     content = np.reshape(sess.run(ex['audio']), [1, self.sample_length])
                     ex_rep = sess.run(self.lat_repr_tens, feed_dict={self.graph['X']: content})
+
                     heap_s.push((-LA.norm(rep - ex_rep), i, ex_rep))
-                    print('samples - len {} - iterate {}'.format(len(heap_s), i))
+                    print('sources - shape {} - iterate {}'.format(len(heap_s), i))
+
 
                 elif type_inst == type_t:
                     content = np.reshape(sess.run(ex['audio']), [1, self.sample_length])
                     ex_rep = sess.run(self.lat_repr_tens, feed_dict={self.graph['X']: content})
+
                     heap_t.push((-LA.norm(rep - ex_rep), i, ex_rep))
-                    print('targets - len {} - iterate {}'.format(len(heap_t), i))
+                    print('targets - shape {} - iterate {}'.format(len(heap_t), i))
 
         except tf.errors.OutOfRangeError:
             pass
-        samples = [heap_s[i][2] for i in range(len(heap_s))]
-        targets = [heap_t[i][2] for i in range(len(heap_t))]
-        return wav, rep, samples, targets
+
+        sources = [heap_s[m][2] for m in range(k)]
+        targets = [heap_t[m][2] for m in range(k)]
+        return wav, rep, sources, targets
 
     @staticmethod
-    def transform(rep, samples, targets, alpha=1):
-        return rep + alpha * (np.mean(targets, axis=0) - np.mean(samples, axis=0))
+    def transform(rep, sources, targets, alpha=1.0):
+        return rep + alpha * (np.mean(targets, axis=0) - np.mean(sources, axis=0))
 
-    def regen_opt(self, sess, transform, nb_iter):
+    def get_encodings(self, sess, wav, transform):
+        lays = self.activ_layers
+        lays.append(self.graph['X'])
+
+        transform_ = np.expand_dims(transform, axis=1)
+        values = [transform_[i] for i in range(self.nb_layers)]
+        values.append(wav)
+
+        encodings = sess.run(self.graph['encoding'],
+                             feed_dict={lays[i]: values[i] for i in range(self.nb_layers + 1)
+                                        })
+        return encodings
+
+    def regen_opt(self, sess, wav, transform, nb_iter):
         '''
         Regenerate using optimization
         :param sess:
@@ -102,20 +120,46 @@ class DeepFeatInterp():
         :param nb_iter:
         :return:
         '''
-        loss = tf.nn.l2_loss(transform - self.lat_repr_tens)
+        encodings = self.get_encodings(sess, wav, transform)
+
+        writer = tf.summary.FileWriter('./log')
+        writer.add_graph(sess.graph)
+
+        with tf.name_scope('loss'):
+            loss = tf.nn.l2_loss(encodings - self.graph['encoding']) + \
+                   tf.reduce_mean(tf.abs(tf.contrib.signal.stft(signals=self.graph['X'],
+                                                                frame_length=1024,
+                                                                frame_step=512)))
+
+            tf.summary.scalar('loss', loss)
+
+        summ = tf.summary.merge_all()
         print(type(self.graph['X']))
+
+        step = tf.Variable(0, dtype=tf.int32, name='step')
+        assign = tf.assign(step, step + 1)
+        sess.run(tf.variables_initializer([step]))
+        print(sess.run(step))
+
+        def loss_tracking(loss_, summ_):
+
+            print('current loss is %s' % loss_)
+            writer.add_summary(summ_, global_step=sess.run(step))
+            sess.run(assign)
 
         train = tf.contrib.opt.ScipyOptimizerInterface(
             loss,
             var_list=[self.graph['X']],
             method='L-BFGS-B',
             options={'maxiter': nb_iter})
-        train.minimize(sess)
+        train.minimize(sess, loss_callback=loss_tracking ,fetches=[loss, summ])
 
         audio = sess.run(self.graph['X'])
-        librosa.output.write_wav(self.save_path, audio, sr=self.sampling_rate)
 
-        print(sess.run(loss))
+        print(audio)
+
+        audio = utils.inv_mu_law_numpy(audio)
+        librosa.output.write_wav(self.save_path, audio.T, sr=self.sampling_rate)
 
     def regen_aut(self, sess, wav, transform):
         '''
@@ -125,16 +169,8 @@ class DeepFeatInterp():
         :param transform:
         :return:
         '''
-        lays = self.activ_layers
-        lays.append(self.graph['X'])
-
-        transform_ = np.expand_dims(transform, axis=1)
-        values = [transform_[i] for i in range(self.nb_layers)]
-        values.append(wav)
-
-        encodings = sess.run(self.graph['encoding'],
-                             feed_dict={lays[i] : values[i] for i in range(self.nb_layers+1)
-                                        })
+        encodings = self.get_encodings(sess, wav, transform)
+        print(encodings.shape)
         fastgen.synthesize(encodings, [self.save_path], self.model_path)
 
     def run(self, file_path, type_s, type_t, k, nb_iter=100, bfgs=True):
@@ -143,12 +179,13 @@ class DeepFeatInterp():
         with tf.Session(config=session_config) as sess:
             self.init_reload(sess)
 
-            wav, acts, samples, targets = self.knn(sess, file_path, type_s, type_t, k)
+            #wav, acts, samples, targets = self.knn(sess, file_path, type_s, type_t, k)
 
-            transform = self.transform(acts, samples, targets)
+            wav, rep = self.load_wav(sess, file_path)
+            transform = self.transform(rep, [0], [0], alpha=0.0)
 
             if bfgs:
-                self.regen_opt(sess, transform, nb_iter)
+                self.regen_opt(sess, wav, transform, nb_iter)
                 return
 
             self.regen_aut(sess, wav, transform)
@@ -158,10 +195,9 @@ class DeepFeatInterp():
 
 if __name__ == '__main__':
     tf_path = './data/nsynth-valid.tfrecord'
-    file_path = './test_data/gen_chad_0.wav'
+    file_path = './test_data/pap/flute.wav'
     checkpoint_path = './nsynth/model/wavenet-ckpt/model.ckpt-200000'
-    save_path = './tmp/save_file.wav'
-    layers = (9, 19, 29)
+    save_path = './tmp/flute_bass.wav'
+    layers = [30]
     deepfeat = DeepFeatInterp(tf_path, checkpoint_path, layers, save_path=save_path)
-    deepfeat.run(file_path, type_s=4, type_t=3, k=10, nb_iter=int(1e12), bfgs=False)
-
+    deepfeat.run(file_path, type_s=2, type_t=0, k=10, nb_iter=int(1e32), bfgs=True)

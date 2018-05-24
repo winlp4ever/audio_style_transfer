@@ -1,12 +1,16 @@
 import tensorflow as tf
 import numpy as np
 
+import scipy.io.wavfile as wav
 
-with tf.Graph().as_default() as graph_1:
-    x = tf.Variable(tf.random_normal(shape=(2,)), name='x')
-    g = x ** 2
-    z = g
-    u = g + x
+import heapq
 
-with tf.Session(graph=graph_1) as sess:
-    print(sess.run(u, feed_dict={z : np.array([2, 1]), x : np.array([3, 2])}))
+u = []
+heapq.heappush(u, (1, [[1], [2]]))
+heapq.heappush(u, (2, [[2], [3]]))
+heapq.heappush(u, (3, [[1], [4]]))
+
+print(heapq.nlargest(2, u, key=lambda m : m[1]))
+
+u = np.asarray(u)
+print(u[:, 1])
