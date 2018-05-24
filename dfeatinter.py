@@ -198,6 +198,6 @@ if __name__ == '__main__':
     file_path = './test_data/pap/flute.wav'
     checkpoint_path = './nsynth/model/wavenet-ckpt/model.ckpt-200000'
     save_path = './tmp/flute_bass.wav'
-    layers = [30]
+    layers = [9, 19, 24, 29, 30]
     deepfeat = DeepFeatInterp(tf_path, checkpoint_path, layers, save_path=save_path)
-    deepfeat.run(file_path, type_s=2, type_t=0, k=10, nb_iter=int(1e32), bfgs=True)
+    deepfeat.run(file_path, type_s=2, type_t=0, k=100, nb_iter=int(1e12), bfgs=False)
