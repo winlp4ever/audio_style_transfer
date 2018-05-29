@@ -260,6 +260,8 @@ class Config(object):
         enc = masked.pool1d(enc, self.ae_hop_length, name='ae_pool', mode='avg')
         encoding = enc
 
+        print('encoding shape {}'.format(tf.shape(encoding)))
+
         ###
         # The WaveNet Decoder.
         ###

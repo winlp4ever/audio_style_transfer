@@ -76,7 +76,7 @@ class DeepFeatInterp():
 
         try:
             i = 0
-            while True:
+            while len(heap_s) < 1 and len(heap_t) < 1:
                 i += 1
                 type_inst = sess.run(ex['instrument_family'])
 

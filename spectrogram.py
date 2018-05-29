@@ -85,8 +85,13 @@ def plotstft(audiopath, binsize=2**10, plotpath=None, colormap="jet"):
         
     plt.clf()
 
+<<<<<<< HEAD
 if __name__ == '__main__':
     plotstft('./test/src/flute.wav', plotpath='./test/src/fig/flute.png')
     plotstft('./test/src/bass.wav', plotpath='./test/src/fig/bass.png')
     plotstft('./test/src/organ.wav', plotpath='./test/src/fig/organ.png')
     plotstft('./test/src/origin.wav', plotpath='./test/src/fig/origin.png')
+=======
+plotstft('./test_data/gen_pia.wav', plotpath='./tmp/gen_pia.png')
+plotstft('./tmp/save_pia.wav', plotpath='./tmp/save_pia.png')
+>>>>>>> d30befe2e197253d457ed4424ad8b4aa951459fe
