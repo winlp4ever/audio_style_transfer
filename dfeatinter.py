@@ -17,7 +17,7 @@ import numpy.linalg as LA
 
 
 class DeepFeatInterp():
-    def __init__(self, ref_datapath, model_path, layers, sample_length=64000,
+    def __init__(self, ref_datapath, model_path, layers, sample_length=25600,
                  sampling_rate=16000, save_path=None, logdir=None):
         assert save_path
         assert logdir
@@ -76,12 +76,12 @@ class DeepFeatInterp():
 
         try:
             i = 0
-            while len(heap_s) < 1 and len(heap_t) < 1:
+            while True:
                 i += 1
                 type_inst = sess.run(ex['instrument_family'])
 
                 if type_inst == type_s:
-                    content = np.reshape(sess.run(ex['audio']), [1, self.sample_length])
+                    content = np.reshape(sess.run(ex['audio'])[:self.sample_length], [1, self.sample_length])
                     ex_rep = sess.run(self.lat_repr_tens, feed_dict={self.graph['X']: content})
 
                     heap_s.push((-LA.norm(rep - ex_rep), i, ex_rep))
@@ -89,7 +89,7 @@ class DeepFeatInterp():
 
 
                 elif type_inst == type_t:
-                    content = np.reshape(sess.run(ex['audio']), [1, self.sample_length])
+                    content = np.reshape(sess.run(ex['audio'])[:self.sample_length], [1, self.sample_length])
                     ex_rep = sess.run(self.lat_repr_tens, feed_dict={self.graph['X']: content})
 
                     heap_t.push((-LA.norm(rep - ex_rep), i, ex_rep))
@@ -104,7 +104,7 @@ class DeepFeatInterp():
 
     @staticmethod
     def transform(rep, sources, targets, alpha=1.0):
-        return rep + alpha * (np.mean(targets, axis=0) - np.mean(sources, axis=0))
+        return (np.mean(targets, axis=0))
 
     def get_encodings(self, sess, wav, transform):
         lays = self.activ_layers
@@ -128,6 +128,8 @@ class DeepFeatInterp():
         :return:
         '''
         encodings = self.get_encodings(sess, wav, transform)
+
+        self.graph['X'] = tf.Variable(initial_value=wav, dtype=tf.float32)
 
         writer = tf.summary.FileWriter(logdir=self.logdir)
         writer.add_graph(sess.graph)
@@ -161,6 +163,8 @@ class DeepFeatInterp():
             var_list=[self.graph['X']],
             method='L-BFGS-B',
             options={'maxiter': nb_iter})
+
+        sess.run(tf.variables_initializer([self.graph['X']]))
         train.minimize(sess, loss_callback=loss_tracking ,fetches=[loss, summ])
 
         audio = sess.run(self.graph['X'])
