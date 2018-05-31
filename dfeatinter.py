@@ -97,7 +97,7 @@ class DeepFeatInterp():
 
     @staticmethod
     def transform(rep, sources, targets, alpha=1.0):
-        return rep + alpha * (np.mean(targets, axis=0) - np.mean(sources, axis=0))
+        return np.mean(targets, axis=0)
 
     def get_encodings(self, sess, wav, transform):
         lays = self.activ_layers
@@ -121,36 +121,40 @@ class DeepFeatInterp():
         :return:
         '''
         encodings = self.get_encodings(sess, wav, transform)
+
         writer = tf.summary.FileWriter('./log')
         writer.add_graph(sess.graph)
 
         with tf.name_scope('loss'):
             loss = tf.nn.l2_loss(encodings - self.graph['encoding']) + \
-                tf.reduce_mean(tf.abs(tf.contrib.signal.stft(self.graph['X'],
-                                                             frame_length=1024,
-                                                             frame_step=512)))
-            tf.summary.scalar(name='loss', tensor=loss)
+                   tf.reduce_mean(tf.abs(tf.contrib.signal.stft(signals=self.graph['X'],
+                                                                frame_length=1024,
+                                                                frame_step=512)))
 
-        with tf.name_scope('train'):
-            train = tf.contrib.opt.ScipyOptimizerInterface(
-                loss,
-                var_list=[self.graph['X']],
-                method='L-BFGS-B',
-                options={'maxiter': nb_iter})
-            train.minimize(sess)
+            tf.summary.scalar('loss', loss)
 
         summ = tf.summary.merge_all()
+        print(type(self.graph['X']))
+
+        step = 0
 
         def loss_tracking(loss_, summ_):
+            nonlocal step
             print('current loss is %s' % loss_)
-            writer.add_summary(summ_)
+            writer.add_summary(summ_, global_step=step)
+            step += 1
 
-        train.minimize(sess,
-                       fetches=[loss, summ],
-                       loss_callback=loss_tracking
-                       )
+        train = tf.contrib.opt.ScipyOptimizerInterface(
+            loss,
+            var_list=[self.graph['X']],
+            method='L-BFGS-B',
+            options={'maxiter': nb_iter})
+        train.minimize(sess, loss_callback=loss_tracking ,fetches=[loss, summ])
 
         audio = sess.run(self.graph['X'])
+
+        print(audio)
+
         audio = utils.inv_mu_law_numpy(audio)
         librosa.output.write_wav(self.save_path, audio.T, sr=self.sampling_rate)
 
@@ -171,9 +175,9 @@ class DeepFeatInterp():
         with tf.Session(config=session_config) as sess:
             self.init_reload(sess)
 
-            wav, acts, samples, targets = self.knn(sess, file_path, type_s, type_t, k)
+            wav, acts, sources, targets = self.knn(sess, file_path, type_s, type_t, k)
 
-            transform = self.transform(acts, samples, targets, alpha=1.0)
+            transform = self.transform(acts, sources, targets, alpha=1.0)
 
             if bfgs:
                 self.regen_opt(sess, wav, transform, nb_iter)
@@ -186,9 +190,9 @@ class DeepFeatInterp():
 
 if __name__ == '__main__':
     tf_path = './data/nsynth-valid.tfrecord'
-    file_path = './test_data/pap/flute.wav'
+    file_path = './test_data/pap/bass.wav'
     checkpoint_path = './nsynth/model/wavenet-ckpt/model.ckpt-200000'
-    save_path = './tmp/flute_bass.wav'
+    save_path = './tmp/bass_flute__.wav'
     layers = [5, 9, 19, 24, 29, 30]
     deepfeat = DeepFeatInterp(tf_path, checkpoint_path, layers, save_path=save_path)
-    deepfeat.run(file_path, type_s=2, type_t=0, k=10, nb_iter=int(10000), bfgs=True)
+    deepfeat.run(file_path, type_s=0, type_t=2, k=10, nb_iter=int(10000), bfgs=False)
