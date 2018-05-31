@@ -104,11 +104,7 @@ class DeepFeatInterp():
 
     @staticmethod
     def transform(rep, sources, targets, alpha=1.0):
-<<<<<<< HEAD
         return np.mean(targets, axis=0)
-=======
-        return (np.mean(targets, axis=0))
->>>>>>> 9f332c6eac3971757672847e97c90ee991446ded
 
     def get_encodings(self, sess, wav, transform):
         lays = self.activ_layers
