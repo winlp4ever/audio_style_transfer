@@ -7,22 +7,29 @@ from nsynth.wavenet import fastgen
 from myheap import MyHeap
 from geter import decode
 import numpy.linalg as la
+import librosa
 
 
 class DFeat(object):
-    def __init__(self, ref_datapath, model_path, sample_length=64000, sampling_rate=16000, save_path=None):
-        assert save_path is not None
+    def __init__(self, ref_datapath, model_path, sample_length=64000,
+                 sampling_rate=16000, save_path=None, logdir=None):
+        assert save_path
+        assert logdir
         self.sample_length = sample_length
         self.sampling_rate = sampling_rate
         self.save_path = save_path
+        self.logdir = logdir
 
         config = Config()
         with tf.device("/gpu:0"):
             x = tf.Variable(tf.random_normal(shape=[1, self.sample_length], stddev=1.0),
                             trainable=True,
                             name='regenerated_wav')
+
             self.graph = config.build({'wav': x}, is_training=False)
             self.graph.update({'X': x})
+
+        print('extract len : {}'.format(len(config.extracts)))
 
         self.ref_datapath = ref_datapath
         self.model_path = model_path
@@ -88,6 +95,42 @@ class DFeat(object):
     def transform(encodings, sources, targets, alpha):
         return np.mean(targets, axis=0)
 
+    def lbfgs(self, sess, encodings, lambd, nb_iter):
+        writer = tf.summary.FileWriter(logdir=self.logdir)
+        writer.add_graph(sess.graph)
+
+        tf.summary.histogram('input', self.graph['X'])
+
+        with tf.name_scope('loss'):
+            stft = tf.contrib.signal.stft(self.graph['X'], frame_length=1024, frame_step=512, name='stft')
+            power_spec = tf.real(stft * tf.conj(stft))
+            tf.summary.histogram('spec', power_spec)
+            loss = (1 - lambd) * tf.nn.l2_loss(self.graph['encoding'] - encodings) + \
+                   lambd * tf.reduce_mean(power_spec)
+            tf.summary.scalar('loss', loss)
+
+        summ = tf.summary.merge_all()
+
+        i = 0
+        def loss_tracking(loss_, summ_):
+            nonlocal i
+            print('current loss {}'.format(loss_))
+            writer.add_summary(summ_, global_step=i)
+            i += 1
+
+
+        optimizer = tf.contrib.opt.ScipyOptimizerInterface(
+            loss,
+            var_list=[self.graph['X']],
+            method='L-BFGS-B',
+            options={'maxiter': nb_iter})
+
+        optimizer.minimize(sess, loss_callback=loss_tracking, fetches=[loss, summ])
+
+        audio = sess.run(self.graph['X'])
+        audio = utils.inv_mu_law_numpy(audio)
+        librosa.output.write_wav(self.save_path, audio.T, sr=self.sampling_rate)
+
     def regenerate(self, encodings):
         '''
         Regenerate using auto-encoder
@@ -98,22 +141,19 @@ class DFeat(object):
         '''
         fastgen.synthesize(encodings, [self.save_path], self.model_path)
 
-    def run(self, filepath, type_s, type_t, k):
+    def run(self, filepath, type_s, type_t, k, bfgs=False, nb_iter=100, lambd=0.1):
         session_config = tf.ConfigProto(allow_soft_placement=True)
         session_config.gpu_options.allow_growth = True
         with tf.Session(config=session_config) as sess:
             self.init_reload(sess)
 
-            encodings, sources, targets = self.knn(sess, filepath, type_s, type_t, k)
-
-            transform = self.transform(encodings, sources, targets, alpha=1.0)
-
+            if type_s != type_t:
+                encodings, sources, targets = self.knn(sess, filepath, type_s, type_t, k)
+                transform = self.transform(encodings, sources, targets, alpha=1.0)
+            else:
+                transform = self.get_encodings(sess, filepath)
+            if bfgs:
+                self.lbfgs(sess, transform, lambd, nb_iter)
+                return
             self.regenerate(transform)
-
-if __name__=='__main__':
-    tf_path = './data/nsynth-valid.tfrecord'
-    file_path = './test_data/pap/flute.wav'
-    checkpoint_path = './nsynth/model/wavenet-ckpt/model.ckpt-200000'
-    save_path = './tmp/flute_bass_embed.wav'
-    deepfeat = DFeat(tf_path, checkpoint_path, save_path=save_path)
-    deepfeat.run(file_path, type_s=2, type_t=0, k=10)
+            return
