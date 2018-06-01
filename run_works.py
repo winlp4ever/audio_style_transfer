@@ -8,7 +8,7 @@ from spectrogram import plotstft
 class DefaultList(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
         if len(values) == 0:
-            values = [9, 19, 24, 29, 30]
+            values = [1, 5, 9, 14, 19, 24, 29, 30]
         setattr(namespace, self.dest, values)
 
 parser = argparse.ArgumentParser()
@@ -37,7 +37,6 @@ args = parser.parse_args()
 LOGDIR = './log'
 MODEL_PATH = './nsynth/model/wavenet-ckpt/model.ckpt-200000'
 DATA_PATH = './data/nsynth-valid.tfrecord'
-layers = [9, 19, 24, 29, 30]
 SRC = './test/src'
 OUT = './test/out'
 ins_fam = {'bass' : 0,
@@ -56,9 +55,12 @@ inv_map = {k : v for v,k in ins_fam.items()}
 
 
 
-def crt_time_folder(sup_path):
+def crt_time_folder(sup_path, second=False):
     date = time.localtime()
-    date_fol = os.path.join(sup_path, str(date[0]) + '_' + str(date[1]) + '_' + str(date[2]))
+    if second:
+        date_fol = os.path.join(sup_path, str(date[0]) + str(date[1]) + str(date[2]) + str(date[3]) + str(date[4]) + str(date[5]))
+    else:
+        date_fol = os.path.join(sup_path, str(date[0]) + str(date[1]) + str(date[2]))
     if not os.path.exists(date_fol):
         os.makedirs(date_fol)
     return date_fol
@@ -71,7 +73,7 @@ def crt_sname(src, trg, fname, sup):
 
 def main():
     data_fol = crt_time_folder(OUT)
-    log_fol = crt_time_folder(LOGDIR)
+    log_fol = crt_time_folder(LOGDIR, True)
     fig_fol = crt_time_folder(os.path.join(OUT, 'fig/'))
     sname = crt_sname(args.src, args.trg, args.fpath, args.supp)
 
@@ -105,6 +107,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-

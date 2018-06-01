@@ -3,9 +3,13 @@ from numpy.linalg import norm
 
 
 
-_, wav = wavfile.read('./tmp/save_file_f.wav')
-wav = wav[:64000,]
-print(wav)
-_, wav_ = wavfile.read('./tmp/save_file_f_u.wav')
-print(norm(wav - wav_))
-print(wav_)
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument('filepath', help='filepath of input signal')
+parser.add_argument('-s', '--source', help='type of source instrument', type=int)
+parser.add_argument('-t', '--target', help='type of target instrument', type=int)
+
+args = parser.parse_args()
+
+print(args.filepath)

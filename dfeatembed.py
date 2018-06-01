@@ -93,7 +93,7 @@ class DFeat(object):
 
     @staticmethod
     def transform(encodings, sources, targets, alpha):
-        return encodings + alpha * (np.mean(targets, axis=0) - np.mean(sources, axis=0))
+        return np.mean(targets, axis=0)
 
     def lbfgs(self, sess, encodings, lambd, nb_iter):
         writer = tf.summary.FileWriter(logdir=self.logdir)
