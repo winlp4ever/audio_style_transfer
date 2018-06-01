@@ -5,6 +5,7 @@ from nsynth import utils
 import matplotlib.pyplot as plt
 from nsynth.wavenet import fastgen
 import librosa
+from scipy.io import wavfile
 from spectrogram import plotstft
 
 plt.switch_backend('agg')
@@ -104,7 +105,7 @@ class DeepFeatInterp():
 
     @staticmethod
     def transform(rep, sources, targets, alpha=1.0):
-        return (np.mean(targets, axis=0))
+        return rep + alpha * (np.mean(targets, axis=0) - np.mean(sources, axis=0))
 
     def get_encodings(self, sess, wav, transform):
         lays = self.activ_layers
@@ -172,8 +173,7 @@ class DeepFeatInterp():
         print(audio)
 
         audio = utils.inv_mu_law_numpy(audio)
-        librosa.output.write_wav(self.save_path, audio.T, sr=self.sampling_rate)
-
+        wavfile.write(self.save_path, self.sampling_rate, audio.T)
     def regen_aut(self, sess, wav, transform):
         '''
         Regenerate using auto-encoder
