@@ -3,6 +3,8 @@ from nsynth.wavenet.model import Config
 import numpy as np
 from scipy.io import wavfile
 from nsynth import utils
+from nsynth.wavenet.fastgen import sample_categorical, load_fastgen_nsynth
+import random
 
 def save_wav(batch_audio, batch_save_paths):
     for audio, name in zip(batch_audio, batch_save_paths):
@@ -10,9 +12,12 @@ def save_wav(batch_audio, batch_save_paths):
         wavfile.write(name, 16000, audio)
 
 def synthesize_with_ref(encodings,
-    save_paths,
-    checkpoint_path = "model.ckpt-200000",
-    samples_per_save = 1000):
+                        save_paths,
+                        wav=None,
+                        checkpoint_path = "model.ckpt-200000",
+                        samples_per_save = 1000):
+    random.seed()
+
     hop_length = Config().ae_hop_length
     # Get lengths
     batch_size = encodings.shape[0]
@@ -48,6 +53,7 @@ def synthesize_with_ref(encodings,
             sample_bin = sample_categorical(pmf)
             audio = utils.inv_mu_law_numpy(sample_bin - 128)
             audio_batch[:, sample_i] = audio[:, 0]
+            audio = np.reshape(wav[:, sample_i] + random.uniform(0., 0.08), [batch_size, 1])
             if sample_i % 100 == 0:
                 tf.logging.info("Sample: %d" % sample_i)
                 print("Sample: %d" % sample_i)

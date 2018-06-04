@@ -21,6 +21,7 @@ def decode(serialized_example):
             "instrument_family": tf.FixedLenFeature([1], dtype=tf.int64),
         }
     )
+
     return ex
 
 def func_tens(config, layers):

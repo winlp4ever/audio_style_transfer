@@ -4,6 +4,7 @@ import time
 from dfeatinter import DeepFeatInterp
 from dfeatembed import DFeat
 from spectrogram import plotstft
+from rainbowgram import plotcqtgram
 
 class DefaultList(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
@@ -58,7 +59,7 @@ inv_map = {k : v for v,k in ins_fam.items()}
 def crt_time_folder(sup_path, second=False):
     date = time.localtime()
     if second:
-        date_fol = os.path.join(sup_path, str(date[0]) + str(date[1]) + str(date[2]) + str(date[3]) + str(date[4]) + str(date[5]))
+        date_fol = os.path.join(sup_path, str(date[0]) + str(date[1]) + str(date[2]) + str(date[3]))
     else:
         date_fol = os.path.join(sup_path, str(date[0]) + str(date[1]) + str(date[2]))
     if not os.path.exists(date_fol):
@@ -103,7 +104,8 @@ def main():
               nb_iter=nb_iter,
               lambd=lambd)
 
-    plotstft(os.path.join(data_fol, sname + '.wav'), plotpath=os.path.join(fig_fol, sname + '.png'))
+    plotstft(os.path.join(data_fol, sname + '.wav'), plotpath=os.path.join(fig_fol, sname + 'spec.png'))
+    plotcqtgram(os.path.join(data_fol, sname + '.wav'), savepath=os.path.join(fig_fol, sname + 'cqt.png'))
 
 if __name__ == '__main__':
     main()

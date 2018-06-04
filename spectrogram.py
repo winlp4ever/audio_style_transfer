@@ -4,6 +4,8 @@
     Frank Zalkow, 2012-2013 """
 
 import numpy as np
+import matplotlib
+matplotlib.use('agg')
 from matplotlib import pyplot as plt
 import scipy.io.wavfile as wav
 from numpy.lib import stride_tricks
@@ -57,7 +59,7 @@ def logscale_spec(spec, sr=44100, factor=20.):
 """ plot spectrogram"""
 def plotstft(audiopath, binsize=2**10, plotpath=None, colormap="jet"):
     samplerate, samples = wav.read(audiopath)
-    s = stft(samples, binsize)
+    s = stft(samples[:25600], binsize)
 
     sshow, freq = logscale_spec(s, factor=1.0, sr=samplerate)
     ims = 20.*np.log10(np.abs(sshow)/10e-6) # amplitude to decibel

@@ -7,6 +7,7 @@ from nsynth.wavenet import fastgen
 import librosa
 from scipy.io import wavfile
 from spectrogram import plotstft
+from synthesize_with_ref import synthesize_with_ref
 
 plt.switch_backend('agg')
 
@@ -14,7 +15,7 @@ from nsynth.wavenet.fastgen import load_nsynth
 from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
 from myheap import MyHeap
 from geter import decode
-import numpy.linalg as LA
+from numpy.linalg import norm
 
 
 class DeepFeatInterp():
@@ -85,7 +86,7 @@ class DeepFeatInterp():
                     content = np.reshape(sess.run(ex['audio'])[:self.sample_length], [1, self.sample_length])
                     ex_rep = sess.run(self.lat_repr_tens, feed_dict={self.graph['X']: content})
 
-                    heap_s.push((-LA.norm(rep - ex_rep), i, ex_rep))
+                    heap_s.push((-norm(rep - ex_rep), i, ex_rep))
                     print('sources - shape {} - iterate {}'.format(len(heap_s), i))
 
 
@@ -93,7 +94,7 @@ class DeepFeatInterp():
                     content = np.reshape(sess.run(ex['audio'])[:self.sample_length], [1, self.sample_length])
                     ex_rep = sess.run(self.lat_repr_tens, feed_dict={self.graph['X']: content})
 
-                    heap_t.push((-LA.norm(rep - ex_rep), i, ex_rep))
+                    heap_t.push((-norm(rep - ex_rep), i, ex_rep))
                     print('targets - shape {} - iterate {}'.format(len(heap_t), i))
 
         except tf.errors.OutOfRangeError:
@@ -120,15 +121,14 @@ class DeepFeatInterp():
                                         })
         return encodings
 
-    def regen_opt(self, sess, wav, transform, nb_iter, lambd):
+    def regen_opt(self, sess, wav, encodings, nb_iter, lambd):
         '''
         Regenerate using optimization
         :param sess:
-        :param transform:
+        :param encodings:
         :param nb_iter:
         :return:
         '''
-        encodings = self.get_encodings(sess, wav, transform)
 
         self.graph['X'] = tf.Variable(initial_value=wav, dtype=tf.float32)
 
@@ -172,8 +172,10 @@ class DeepFeatInterp():
 
         print(audio)
 
-        audio = utils.inv_mu_law_numpy(audio)
+        #audio = utils.inv_mu_law_numpy(audio - 128)
+
         wavfile.write(self.save_path, self.sampling_rate, audio.T)
+
     def regen_aut(self, sess, wav, transform):
         '''
         Regenerate using auto-encoder
@@ -183,7 +185,7 @@ class DeepFeatInterp():
         :return:
         '''
         encodings = self.get_encodings(sess, wav, transform)
-        fastgen.synthesize(encodings, [self.save_path], self.model_path)
+        synthesize_with_ref(encodings, wav=wav, save_paths=[self.save_path], checkpoint_path=self.model_path)
 
     def run(self, file_path, type_s, type_t, k, bfgs=False, nb_iter=100, lambd=0.1):
         session_config = tf.ConfigProto(allow_soft_placement=True)
@@ -193,8 +195,10 @@ class DeepFeatInterp():
             if type_s != type_t:
                 wav, acts, sources, targets = self.knn(sess, file_path, type_s, type_t, k)
                 transform = self.transform(acts, sources, targets, alpha=1.0)
+
             else:
                 wav, transform = self.load_wav(sess, file_path)
+
             if bfgs:
                 self.regen_opt(sess, wav, transform, nb_iter, lambd)
                 return

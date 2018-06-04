@@ -8,10 +8,11 @@ from myheap import MyHeap
 from geter import decode
 import numpy.linalg as la
 import librosa
+from synthesize_with_ref import synthesize_with_ref
 
 
 class DFeat(object):
-    def __init__(self, ref_datapath, model_path, sample_length=64000,
+    def __init__(self, ref_datapath, model_path, sample_length=25600,
                  sampling_rate=16000, save_path=None, logdir=None):
         assert save_path
         assert logdir
@@ -51,7 +52,7 @@ class DFeat(object):
         wav = np.reshape(wav, [1, self.sample_length])
 
         encodings = sess.run(self.graph['encoding'], feed_dict={self.graph['X'] : wav})
-        return encodings
+        return wav, encodings
 
     def knn(self, sess, filepath, type_s, type_t, k):
         dataset = tf.data.TFRecordDataset([self.ref_datapath]).map(decode)
@@ -61,7 +62,7 @@ class DFeat(object):
         heap_s = MyHeap(k)
         heap_t = MyHeap(k)
 
-        encodings = self.get_encodings(sess, filepath)
+        wav, encodings = self.get_encodings(sess, filepath)
         i = 0
 
         try:
@@ -70,7 +71,7 @@ class DFeat(object):
                 type_inst = sess.run(ex['instrument_family'])
 
                 if type_inst == type_s:
-                    content = np.reshape(sess.run(ex['audio']), [1, self.sample_length])
+                    content = np.reshape(sess.run(ex['audio'][:self.sample_length]), [1, self.sample_length])
                     ex_enc = sess.run(self.graph['encoding'], feed_dict={self.graph['X']: content})
 
                     heap_s.push((-la.norm(encodings - ex_enc), i, ex_enc))
@@ -78,7 +79,7 @@ class DFeat(object):
 
 
                 elif type_inst == type_t:
-                    content = np.reshape(sess.run(ex['audio']), [1, self.sample_length])
+                    content = np.reshape(sess.run(ex['audio'][:self.sample_length]), [1, self.sample_length])
                     ex_enc = sess.run(self.graph['encoding'], feed_dict={self.graph['X']: content})
 
                     heap_t.push((-la.norm(encodings - ex_enc), i, ex_enc))
@@ -89,16 +90,21 @@ class DFeat(object):
 
         sources = [heap_s[m][2] for m in range(k)]
         targets = [heap_t[m][2] for m in range(k)]
-        return encodings, sources, targets
+        return wav, encodings, sources, targets
 
     @staticmethod
     def transform(encodings, sources, targets, alpha):
-        return np.mean(targets, axis=0)
+        return encodings + np.mean(targets, axis=0) - np.mean(sources, axis=0)
 
-    def lbfgs(self, sess, encodings, lambd, nb_iter):
+    def lbfgs(self, sess, wav, encodings, lambd, nb_iter):
+
         writer = tf.summary.FileWriter(logdir=self.logdir)
         writer.add_graph(sess.graph)
 
+
+        var = tf.Variable(initial_value=wav, dtype=tf.float32)
+
+        assign = tf.assign(self.graph['X'], var)
         tf.summary.histogram('input', self.graph['X'])
 
         with tf.name_scope('loss'):
@@ -121,14 +127,17 @@ class DFeat(object):
 
         optimizer = tf.contrib.opt.ScipyOptimizerInterface(
             loss,
-            var_list=[self.graph['X']],
+            var_list=[var],
             method='L-BFGS-B',
             options={'maxiter': nb_iter})
+
+        sess.run(tf.variables_initializer([var]))
+
 
         optimizer.minimize(sess, loss_callback=loss_tracking, fetches=[loss, summ])
 
         audio = sess.run(self.graph['X'])
-        audio = utils.inv_mu_law_numpy(audio)
+
         librosa.output.write_wav(self.save_path, audio.T, sr=self.sampling_rate)
 
     def regenerate(self, encodings):
@@ -148,12 +157,12 @@ class DFeat(object):
             self.init_reload(sess)
 
             if type_s != type_t:
-                encodings, sources, targets = self.knn(sess, filepath, type_s, type_t, k)
+                wav, encodings, sources, targets = self.knn(sess, filepath, type_s, type_t, k)
                 transform = self.transform(encodings, sources, targets, alpha=1.0)
             else:
-                transform = self.get_encodings(sess, filepath)
+                wav, transform = self.get_encodings(sess, filepath)
             if bfgs:
-                self.lbfgs(sess, transform, lambd, nb_iter)
+                self.lbfgs(sess, wav, transform, lambd, nb_iter)
                 return
             self.regenerate(transform)
             return
