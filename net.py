@@ -9,6 +9,12 @@ import librosa
 import os, time, argparse
 from spectrogram import plotstft
 from rainbowgram import plotcqtgram
+from mdl import Cfg
+
+def mu_law_numpy(x, mu=255):
+    out = np.sign(x) * np.log(1 + mu * np.abs(x)) / np.log(1 + mu)
+    out = np.floor(out * 128)
+    return out
 
 class Net(object):
     def __init__(self, fpath, spath, tf_path, checkpoint_path, logdir, length=25600, sr=16000):
@@ -24,19 +30,19 @@ class Net(object):
         wav = utils.load_audio(fpath, length, sr)
         wav = np.reshape(wav, [1, length])
 
-        config = Config()
+        config = Cfg()
         with tf.device("/gpu:0"):
-            x = tf.Variable(initial_value=wav,
+            x = tf.Variable(initial_value=mu_law_numpy(wav),
                             trainable=True,
                             name='regenerated_wav')
 
-            graph = config.build({'wav': x}, is_training=True)
-            graph.update({'X': x})
+            graph = config.build({'quantized_wav': x}, is_training=True)
+            #graph.update({'X': x})
         return graph
 
     def load_model(self, sess):
         variables = tf.global_variables()
-        variables.remove(self.graph['X'])
+        variables.remove(self.graph['quantized_input'])
 
         saver = tf.train.Saver(var_list=variables)
         saver.restore(sess, self.checkpoint_path)
@@ -57,13 +63,15 @@ class Net(object):
 
                 if ins == type_s:
                     audio = np.reshape(sess.run(el['audio'][:self.length]), [1, self.length])
-                    enc = sess.run(self.graph['encoding'], feed_dict={self.graph['X'] : audio})
+                    enc = sess.run(self.graph['encoding'], feed_dict={
+                        self.graph['quantized_input'] : mu_law_numpy(audio)})
                     N_s.push((-norm(enc - encodings), i, enc))
                     print('sources - size {} - iterate {}'.format(len(N_s), i))
 
                 elif ins == type_t:
                     audio = np.reshape(sess.run(el['audio'][:self.length]), [1, self.length])
-                    enc = sess.run(self.graph['encoding'], feed_dict={self.graph['X']: audio})
+                    enc = sess.run(self.graph['encoding'], feed_dict={
+                        self.graph['quantized_input'] : mu_law_numpy(audio)})
                     N_t.push((-norm(enc - encodings), i, enc))
                     print('targets - size {} - iterate {}'.format(len(N_t), i))
         except tf.errors.OutOfRangeError:
@@ -79,11 +87,12 @@ class Net(object):
         writer.add_graph(sess.graph)
 
         with tf.name_scope('loss'):
-            stft = tf.contrib.signal.stft(self.graph['X'], frame_length=1024, frame_step=512, name='stft')
+            stft = tf.contrib.signal.stft(self.graph['quantized_input'], frame_length=1024, frame_step=512, name='stft')
             power_spec = tf.real(stft * tf.conj(stft))
             tf.summary.histogram('spec', power_spec)
-            loss = (1 - lambd) * tf.nn.l2_loss(self.graph['encoding'] - encodings) + \
-                   lambd * tf.reduce_mean(power_spec)
+
+            loss = (1 - lambd) * tf.nn.l2_loss(self.graph['encoding'] - encodings)
+                   #lambd * tf.reduce_mean(power_spec)
             tf.summary.scalar('loss', loss)
 
         summ = tf.summary.merge_all()
@@ -91,22 +100,37 @@ class Net(object):
         i = 0
         def loss_tracking(loss_, summ_):
             nonlocal i
-            print('current loss {}'.format(loss_))
+            print('step {} - loss {}'.format(i, loss_))
             writer.add_summary(summ_, global_step=i)
+            if not i%1000:
+                print('save file.')
+                audio = sess.run(self.graph['quantized_input'])
+                audio = utils.inv_mu_law_numpy(audio)
+
+                librosa.output.write_wav(self.spath, audio.T, sr=self.sr)
             i += 1
+
 
 
         optimizer = tf.contrib.opt.ScipyOptimizerInterface(
             loss,
-            var_list=[self.graph['X']],
+            var_list=[self.graph['quantized_input']],
             method='L-BFGS-B',
             options={'maxiter': epochs})
 
         optimizer.minimize(sess, loss_callback=loss_tracking, fetches=[loss, summ])
 
-        audio = sess.run(self.graph['X'])
+        '''
+        optim = tf.train.AdamOptimizer(learning_rate=1e-6)
+        trainop = optim.minimize(loss, var_list=[self.graph['quantized_input']])
 
-        librosa.output.write_wav(self.spath, audio.T, sr=self.sr)
+        sess.run(tf.variables_initializer(optim.variables()))
+
+        for i in range(epochs):
+            _, smm, lss = sess.run([trainop, summ, loss])
+            writer.add_summary(smm, global_step=i)
+            print('step {} - loss {}'.format(i, lss))
+        '''
 
     def run(self, type_s, type_t, k=10, epochs=100, lambd=0.1):
         session_config = tf.ConfigProto(allow_soft_placement=True)
@@ -119,7 +143,7 @@ class Net(object):
 
             if type_s != type_t:
                 encodings, sources, targets = self.knear(sess, type_s, type_t, k)
-                encodings += np.mean(targets) - np.mean(sources)
+                encodings = np.mean(targets)
             else:
                 encodings = sess.run(self.graph['encoding'])
 
@@ -130,8 +154,9 @@ def main():
     parser.add_argument('fname', help='filename to transfer style.')
     parser.add_argument('s', help='source type', type=int)
     parser.add_argument('t', help='target type', type=int)
-    parser.add_argument('-e', '--epochs', help='number of epochs', nargs='?', type=int, default=1000)
+    parser.add_argument('-e', '--epochs', help='number of epochs', nargs='?', type=int, default=100)
     parser.add_argument('-l', '--lambd', help='lambda value', nargs='?', type=float, default=0.0001)
+    parser.add_argument('-c', '--cmt', help='comment', nargs='?', default='')
 
     args = parser.parse_args()
 
@@ -160,19 +185,20 @@ def main():
     inv_map = {k: v for v, k in ins_fam.items()}
 
     spath = os.path.join(crt_fol('./test/out/'),
-                         inv_map[args.s] + '_to_' + inv_map[args.t] + '_' + args.fname + '.wav'
+                         inv_map[args.s] + '_to_' + inv_map[args.t] +
+                         '_' + args.fname + '_' + str(args.lambd) + '_' + args.cmt + '.wav'
                          )
     fpath = os.path.join('./test/src/', args.fname + '.wav')
     logdir = crt_fol('./log/', True)
     checkpoint_path = './nsynth/model/wavenet-ckpt/model.ckpt-200000'
     tfpath = './data/nsynth-valid.tfrecord'
-    figfol = os.path.join('./test/out/fig', args.fname + '.wav')
+    figfol = crt_fol('./test/out/fig')
 
     net = Net(fpath, spath, tfpath, checkpoint_path, logdir)
     net.run(args.s, args.t, epochs=args.epochs, lambd=args.lambd)
 
-    plotstft(spath, plotpath=os.path.join(figfol, args.fname + '_spec.png'))
-    plotcqtgram(spath, savepath=os.path.join(figfol, args.fname + '_spec.png'))
+    plotstft(spath, plotpath=os.path.join(figfol, args.fname + '_' + args.cmt + '_spec.png'))
+    plotcqtgram(spath, savepath=os.path.join(figfol, args.fname + '_' + args.cmt + '_cqt.png'))
 
 if __name__ == '__main__':
     main()
