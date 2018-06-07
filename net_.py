@@ -10,7 +10,6 @@ import os, time, argparse
 from spectrogram import plotstft
 from rainbowgram import plotcqtgram
 from mdl import Cfg
-import random
 
 def mu_law_numpy(x, mu=255):
     out = np.sign(x) * np.log(1 + mu * np.abs(x)) / np.log(1 + mu)
@@ -28,26 +27,18 @@ class Net(object):
         self.wav, self.graph = self.build(fpath, length, sr)
 
     def build(self, fpath, length, sr):
-        random.seed()
         wav = utils.load_audio(fpath, length, sr)
-        #print('max : {}'.format(np.max(wav)))
-        wav[4000:8000,] = librosa.effects.pitch_shift(wav[4000:8000,], sr, random.uniform(-0.5, 0.5))
-
-        wav += np.random.uniform(-0.04, 0.04, (length))
         wav = np.reshape(wav, [1, length])
-
-        wav_ = utils.load_audio(fpath, length, sr)
-        wav_ = np.reshape(wav_, [1, length])
 
         config = Cfg()
         with tf.device("/gpu:0"):
-            x = tf.Variable(initial_value=mu_law_numpy(wav),
+            x = tf.Variable(initial_value=np.zeros([1, length]),
                             trainable=True,
-                            name='regenerated_wav')
+                            name='regenerated_wav', dtype=tf.float32)
 
             graph = config.build({'quantized_wav': x}, is_training=True)
             #graph.update({'X': x})
-        return wav_, graph
+        return wav, graph
 
     def load_model(self, sess):
         variables = tf.global_variables()
@@ -62,8 +53,7 @@ class Net(object):
 
         N_s, N_t = MyHeap(k), MyHeap(k)
 
-        encodings = sess.run(self.graph['encoding'],
-                             feed_dict={self.graph['quantized_input']: mu_law_numpy(self.wav)})
+        encodings = sess.run(self.graph['encoding'], feed_dict={self.graph['quantized_input']: mu_law_numpy(self.wav)})
 
         i = 0
         try:
@@ -101,8 +91,8 @@ class Net(object):
             power_spec = tf.real(stft * tf.conj(stft))
             tf.summary.histogram('spec', power_spec)
 
-            loss = (1 - lambd) * tf.nn.l2_loss(self.graph['encoding'] - encodings)
-                   #lambd * tf.reduce_mean(power_spec)
+            loss = (1 - lambd) * tf.nn.l2_loss(self.graph['encoding'] - encodings) \
+                    + lambd * tf.reduce_mean(power_spec)
             tf.summary.scalar('loss', loss)
 
         summ = tf.summary.merge_all()
@@ -112,12 +102,7 @@ class Net(object):
             nonlocal i
             print('step {} - loss {}'.format(i, loss_))
             writer.add_summary(summ_, global_step=i)
-            if not i%1000:
-                print('save file.')
-                audio = sess.run(self.graph['quantized_input'])
-                audio = utils.inv_mu_law_numpy(audio)
 
-                librosa.output.write_wav(self.spath, audio.T, sr=self.sr)
             i += 1
 
 
@@ -141,6 +126,11 @@ class Net(object):
             writer.add_summary(smm, global_step=i)
             print('step {} - loss {}'.format(i, lss))
         '''
+        print('save file.')
+        audio = sess.run(self.graph['quantized_input'])
+        audio = utils.inv_mu_law_numpy(audio)
+
+        librosa.output.write_wav(self.spath, audio.T, sr=self.sr)
 
     def run(self, type_s, type_t, k=10, epochs=100, lambd=0.1):
         session_config = tf.ConfigProto(allow_soft_placement=True)

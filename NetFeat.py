@@ -18,36 +18,39 @@ def mu_law_numpy(x, mu=255):
     return out
 
 class Net(object):
-    def __init__(self, fpath, spath, tf_path, checkpoint_path, logdir, length=25600, sr=16000):
+    def __init__(self, fpath, spath, tf_path, checkpoint_path, logdir, layers, length=25600, sr=16000):
         self.data = tf.data.TFRecordDataset([tf_path]).map(decode)
         self.checkpoint_path = checkpoint_path
         self.spath = spath
         self.logdir = logdir
         self.length = length
         self.sr = sr
-        self.wav, self.graph = self.build(fpath, length, sr)
+        self.nb_layers = len(layers)
+        self.wav, self.graph, self.layers = self.build(fpath, layers, length, sr)
 
-    def build(self, fpath, length, sr):
-        random.seed()
+    def build(self, fpath, layers, length, sr):
+        #random.seed()
         wav = utils.load_audio(fpath, length, sr)
         #print('max : {}'.format(np.max(wav)))
-        wav[4000:8000,] = librosa.effects.pitch_shift(wav[4000:8000,], sr, random.uniform(-0.5, 0.5))
+        #wav[4000:8000,] = librosa.effects.pitch_shift(wav[4000:8000,], sr, random.uniform(-0.5, 0.5))
 
-        wav += np.random.uniform(-0.04, 0.04, (length))
+        #wav += np.random.uniform(-0.04, 0.04, (length))
         wav = np.reshape(wav, [1, length])
 
-        wav_ = utils.load_audio(fpath, length, sr)
-        wav_ = np.reshape(wav_, [1, length])
+        #wav_ = utils.load_audio(fpath, length, sr)
+        #wav_ = np.reshape(wav_, [1, length])
 
         config = Cfg()
         with tf.device("/gpu:0"):
-            x = tf.Variable(initial_value=mu_law_numpy(wav),
+            x = tf.Variable(initial_value=np.zeros([1, length]),
                             trainable=True,
                             name='regenerated_wav')
 
             graph = config.build({'quantized_wav': x}, is_training=True)
             #graph.update({'X': x})
-        return wav_, graph
+
+        lyrs = [config.extracts[i] for i in layers]
+        return wav, graph, lyrs
 
     def load_model(self, sess):
         variables = tf.global_variables()
@@ -62,8 +65,9 @@ class Net(object):
 
         N_s, N_t = MyHeap(k), MyHeap(k)
 
-        encodings = sess.run(self.graph['encoding'],
-                             feed_dict={self.graph['quantized_input']: mu_law_numpy(self.wav)})
+        encodings = sess.run([self.layers[i] for i in range(self.nb_layers)], feed_dict={
+            self.graph['quantized_input']: mu_law_numpy(self.wav)
+        })
 
         i = 0
         try:
@@ -73,35 +77,44 @@ class Net(object):
 
                 if ins == type_s:
                     audio = np.reshape(sess.run(el['audio'][:self.length]), [1, self.length])
-                    enc = sess.run(self.graph['encoding'], feed_dict={
+                    enc = sess.run([self.layers[i] for i in range(self.nb_layers)], feed_dict={
                         self.graph['quantized_input'] : mu_law_numpy(audio)})
-                    N_s.push((-norm(enc - encodings), i, enc))
+                    dist = np.sum([norm(encodings[i] - enc[i]) for i in range(self.nb_layers)])
+
+                    N_s.push((-dist, i, enc))
                     print('sources - size {} - iterate {}'.format(len(N_s), i))
 
                 elif ins == type_t:
                     audio = np.reshape(sess.run(el['audio'][:self.length]), [1, self.length])
-                    enc = sess.run(self.graph['encoding'], feed_dict={
+                    enc = sess.run([self.layers[i] for i in range(self.nb_layers)], feed_dict={
                         self.graph['quantized_input'] : mu_law_numpy(audio)})
-                    N_t.push((-norm(enc - encodings), i, enc))
+                    dist = np.sum([norm(encodings[i] - enc[i]) for i in range(self.nb_layers)])
+
+                    N_t.push((-dist, i, enc))
                     print('targets - size {} - iterate {}'.format(len(N_t), i))
         except tf.errors.OutOfRangeError:
             pass
 
-        sources = [N_s[m][2] for m in range(len(N_s))]
-        targets = [N_t[m][2] for m in range(len(N_t))]
+        sources = [[N_s[m][2][i] for m in range(len(N_s))] for i in range(self.nb_layers)]
+        targets = [[N_t[m][2][i] for m in range(len(N_t))] for i in range(self.nb_layers)]
 
-        return encodings, sources, targets
+        for i in range(self.nb_layers):
+            encodings[i] += np.mean(targets[i], axis=0) - np.mean(sources[i], axis=0)
+
+        return encodings
+
+
 
     def l_bfgs(self, sess, encodings, epochs, lambd):
         writer = tf.summary.FileWriter(logdir=self.logdir)
         writer.add_graph(sess.graph)
 
         with tf.name_scope('loss'):
-            stft = tf.contrib.signal.stft(self.graph['quantized_input'], frame_length=1024, frame_step=512, name='stft')
-            power_spec = tf.real(stft * tf.conj(stft))
-            tf.summary.histogram('spec', power_spec)
+            #stft = tf.contrib.signal.stft(self.graph['quantized_input'], frame_length=1024, frame_step=512, name='stft')
+            #power_spec = tf.real(stft * tf.conj(stft))
+            #tf.summary.histogram('spec', power_spec)
 
-            loss = (1 - lambd) * tf.nn.l2_loss(self.graph['encoding'] - encodings)
+            loss = (1 - lambd) * tf.nn.l2_loss([(self.layers[i] - encodings[i]) for i in range(self.nb_layers)])
                    #lambd * tf.reduce_mean(power_spec)
             tf.summary.scalar('loss', loss)
 
@@ -112,12 +125,7 @@ class Net(object):
             nonlocal i
             print('step {} - loss {}'.format(i, loss_))
             writer.add_summary(summ_, global_step=i)
-            if not i%1000:
-                print('save file.')
-                audio = sess.run(self.graph['quantized_input'])
-                audio = utils.inv_mu_law_numpy(audio)
 
-                librosa.output.write_wav(self.spath, audio.T, sr=self.sr)
             i += 1
 
 
@@ -141,6 +149,10 @@ class Net(object):
             writer.add_summary(smm, global_step=i)
             print('step {} - loss {}'.format(i, lss))
         '''
+        audio = sess.run(self.graph['quantized_input'])
+        audio = utils.inv_mu_law_numpy(audio)
+
+        librosa.output.write_wav(self.spath, audio.T, sr=self.sr)
 
     def run(self, type_s, type_t, k=10, epochs=100, lambd=0.1):
         session_config = tf.ConfigProto(allow_soft_placement=True)
@@ -152,10 +164,9 @@ class Net(object):
             self.load_model(sess)
 
             if type_s != type_t:
-                encodings, sources, targets = self.knear(sess, type_s, type_t, k)
-                encodings += np.mean(targets) - np.mean(sources)
+                encodings = self.knear(sess, type_s, type_t, k)
             else:
-                encodings = sess.run(self.graph['encoding'], feed_dict={
+                encodings = sess.run([self.layers[i] for i in range(self.nb_layers)], feed_dict={
                     self.graph['quantized_input']: mu_law_numpy(self.wav)
                 })
 
@@ -207,7 +218,9 @@ def main():
     tfpath = './data/nsynth-valid.tfrecord'
     figfol = crt_fol('./test/out/fig')
 
-    net = Net(fpath, spath, tfpath, checkpoint_path, logdir)
+    layers = [10, 20, 30]
+
+    net = Net(fpath, spath, tfpath, checkpoint_path, logdir, layers)
     net.run(args.s, args.t, k=args.knear, epochs=args.epochs, lambd=args.lambd)
 
     plotstft(spath, plotpath=os.path.join(figfol, sname + '_spec.png'))
