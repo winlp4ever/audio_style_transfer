@@ -6,11 +6,13 @@ from dfeatembed import DFeat
 from spectrogram import plotstft
 from rainbowgram import plotcqtgram
 
+
 class DefaultList(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
         if len(values) == 0:
             values = [1, 5, 9, 14, 19, 24, 29, 30]
         setattr(namespace, self.dest, values)
+
 
 parser = argparse.ArgumentParser()
 
@@ -21,13 +23,13 @@ parser.add_argument('trg', help='instrument type of target files', type=int)
 # add optional arguments
 parser.add_argument('-y', '--layers',
                     help='whether using only embedding activation or not, '
-                                          'if specified, which means No, then should specify a list of layers, '
-                                           'otherwise layers are set to default',
+                         'if specified, which means No, then should specify a list of layers, '
+                         'otherwise layers are set to default',
                     nargs='*', type=int, action=DefaultList)
 
 parser.add_argument('-l', '--lbfgs',
                     help='whether using lbfgs or not. If yes, the nb of iters'
-                                          'should be specified, otherwise it will be 1000 by default',
+                         'should be specified, otherwise it will be 1000 by default',
                     nargs='+', type=float)
 parser.add_argument('-u', '--supp', help='a string to help better understand output file')
 parser.add_argument('-k', '--knear', help='the number of nearest neighbors, equals 10 by default',
@@ -40,20 +42,19 @@ MODEL_PATH = './nsynth/model/wavenet-ckpt/model.ckpt-200000'
 DATA_PATH = './data/nsynth-valid.tfrecord'
 SRC = './test/src'
 OUT = './test/out'
-ins_fam = {'bass' : 0,
-           'brass' : 1,
-           'flute' : 2,
-           'guitar' : 3,
-           'keyboard' : 4,
-           'mallet' : 5,
-           'organ' : 6,
-           'reed' : 7,
-           'string' : 8,
-           'synth_lead' : 9,
-           'vocal' : 10}
+ins_fam = {'bass': 0,
+           'brass': 1,
+           'flute': 2,
+           'guitar': 3,
+           'keyboard': 4,
+           'mallet': 5,
+           'organ': 6,
+           'reed': 7,
+           'string': 8,
+           'synth_lead': 9,
+           'vocal': 10}
 
-inv_map = {k : v for v,k in ins_fam.items()}
-
+inv_map = {k: v for v, k in ins_fam.items()}
 
 
 def crt_time_folder(sup_path, second=False):
@@ -66,11 +67,13 @@ def crt_time_folder(sup_path, second=False):
         os.makedirs(date_fol)
     return date_fol
 
+
 def crt_sname(src, trg, fname, sup):
-    s = inv_map[src]+'_to_'+inv_map[trg]+'__'+fname
+    s = inv_map[src] + '_to_' + inv_map[trg] + '__' + fname
     if sup:
         s += '_' + sup
     return s
+
 
 def main():
     data_fol = crt_time_folder(OUT)
@@ -106,6 +109,7 @@ def main():
 
     plotstft(os.path.join(data_fol, sname + '.wav'), plotpath=os.path.join(fig_fol, sname + 'spec.png'))
     plotcqtgram(os.path.join(data_fol, sname + '.wav'), savepath=os.path.join(fig_fol, sname + 'cqt.png'))
+
 
 if __name__ == '__main__':
     main()
