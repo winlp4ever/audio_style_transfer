@@ -160,7 +160,7 @@ def conv1d(x,
     return y
 
 
-def pool1d(x, window_length, name, mode='avg', stride=None):
+def pool1d(x, window_length, name, mode='avg', stride=None, padding='SAME'):
     """1D pooling function that supports multiple different modes.
 
     Args:
@@ -186,5 +186,5 @@ def pool1d(x, window_length, name, mode='avg', stride=None):
     window_shape = [1, 1, window_length, 1]
     strides = [1, 1, stride, 1]
     x_4d = tf.reshape(x, [batch_size, 1, length, num_channels])
-    pooled = pool_fn(x_4d, window_shape, strides, padding='SAME', name=name)
-    return tf.reshape(pooled, [batch_size, length // stride, num_channels])
+    pooled = pool_fn(x_4d, window_shape, strides, padding=padding, name=name)
+    return tf.reshape(pooled, [batch_size, -1, num_channels])

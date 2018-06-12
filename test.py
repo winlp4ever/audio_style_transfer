@@ -1,9 +1,17 @@
 import numpy as np
 from numpy.linalg import norm
 
-a = [np.array([1, 2]), np.array([2])]
-b = [np.array([2, 3]), np.array([3])]
+import matplotlib.pyplot as plt
 
-c = [2, 3]
+from scipy.interpolate import interp1d
 
-print(np.sum(c))
+f1 = './data/src/bass.wav'
+f2 = './data/src/voice.wav'
+
+import librosa
+
+au1, sr = librosa.load(f1, sr=16000)
+au2, _ = librosa.load(f2, sr=16000)
+
+ps, mags = librosa.core.piptrack(au1[:16000], sr)
+print(ps.shape)

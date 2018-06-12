@@ -124,7 +124,7 @@ class Cfg(object):
             filter_length=1,
             name='ae_bottleneck')
 
-
+        self.extracts.append(enc)
         enc = masked.pool1d(enc, self.ae_hop_length, name='ae_pool', mode='avg')
         encoding = enc
 
@@ -199,4 +199,5 @@ class Cfg(object):
             },
             'quantized_input': x_quantized,
             'encoding': encoding,
+            'before_enc': enc_
         }
