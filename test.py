@@ -1,17 +1,11 @@
-import numpy as np
-from numpy.linalg import norm
-
-import matplotlib.pyplot as plt
-
-from scipy.interpolate import interp1d
-
-f1 = './data/src/bass.wav'
-f2 = './data/src/voice.wav'
-
 import librosa
+from scipy.io import wavfile
 
-au1, sr = librosa.load(f1, sr=16000)
-au2, _ = librosa.load(f2, sr=16000)
+fpath = './data/src/flute1.wav'
 
-ps, mags = librosa.core.piptrack(au1[:16000], sr)
-print(ps.shape)
+au, sr = librosa.load(fpath, sr=16000)
+
+aus = []
+for i in range(7):
+    au_ = au[i * 2048: i * 2048 + 4096]
+    wavfile.write('./data/src/flute1{}.wav'.format(i), sr, au_)

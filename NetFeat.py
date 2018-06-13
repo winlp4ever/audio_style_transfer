@@ -132,7 +132,7 @@ class Net(object):
         targets = [[N_t[m][2][i] for m in range(len(N_t))] for i in range(self.nb_layers)]
 
         for i in range(self.nb_layers):
-            encodings[i] += np.mean(targets[i], axis=0) - np.mean(sources[i], axis=0)
+            encodings[i] = np.mean(targets[i], axis=0)
 
         return encodings
 
