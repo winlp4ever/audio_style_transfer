@@ -8,7 +8,7 @@ from numpy.linalg import norm
 import librosa
 import os, time, argparse
 from spectrogram import plotstft
-from rainbowgram import plotcqtgram
+from rainbowgram import plotcqt
 from mdl import Cfg
 import random
 
@@ -211,7 +211,7 @@ def main():
     net.run(args.s, args.t, k=args.knear, epochs=args.epochs, lambd=args.lambd)
 
     plotstft(spath, plotpath=os.path.join(figfol, sname + '_spec.png'))
-    plotcqtgram(spath, savepath=os.path.join(figfol, sname + '_cqt.png'))
+    plotcqt(spath, savepath=os.path.join(figfol, sname + '_cqt.png'))
 
 if __name__ == '__main__':
     main()

@@ -61,7 +61,7 @@ def rainbowgram(audio,
     p = np.concatenate([phase_unwrapped[:, 0:1], p], axis=1) / np.pi
     return mag, p
 
-def plotcqtgram(filepath, savepath=None):
+def plotcqt(filepath, savepath=None):
     sr, audio = readwav(filepath)
     audio = audio.astype(np.float32)
     mag, p = rainbowgram(audio, sr)
@@ -76,4 +76,4 @@ def plotcqtgram(filepath, savepath=None):
 
 if __name__ == '__main__':
     path = './test/out/2018531/bass_to_flute__bass_avg_no_embed.wav'
-    plotcqtgram(path)
+    plotcqt(path)

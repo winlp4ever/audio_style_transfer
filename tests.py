@@ -4,6 +4,8 @@ step = tf.Variable(1, dtype=tf.float32)
 ass = tf.assign(step, step + 1)
 
 vector = tf.Variable([7., 7.], 'vector')
+vector_ = tf.Variable([2., 2.], 'replace')
+assign = tf.assign(vector, vector_)
 loss = tf.nn.l2_loss(tf.square(vector))
 tf.summary.scalar('loss', loss)
 
@@ -23,9 +25,10 @@ with tf.Session() as sess:
 
     tf.global_variables_initializer().run()
     writer.add_graph(sess.graph)
+    sess.run(assign)
     optimizer.minimize(sess,
                        loss_callback=print_loss,
-                       fetches=[loss, vector, summ])
+                       fetches=[loss, vector_, summ])
     print(vector.eval())
     for i in range(5):
         sess.run(ass)

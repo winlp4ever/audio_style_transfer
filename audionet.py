@@ -8,7 +8,7 @@ import os
 import time
 import argparse
 from spectrogram import plotstft
-from rainbowgram import plotcqtgram
+from rainbowgram import plotcqt
 from mdl import Cfg
 from nsynth.wavenet import masked
 from geter import decode
@@ -136,7 +136,7 @@ class Net(object):
         w = targets - sources
 
         alpha = beta / (w ** 2)
-        return encodings + alpha * w
+        return encodings + w
 
     @staticmethod
     def get_encoding(encodings):
@@ -286,7 +286,7 @@ def main():
     net.run(args.s, args.t, args.k, args.epochs, args.lambd)
 
     plotstft('{}_{}.wav'.format(save_path, args.epochs - 1), plotpath='{}_spec.png'.format(plot_path))
-    plotcqtgram('{}_{}.wav'.format(save_path, args.epochs - 1), savepath='{}_cqt.png'.format(plot_path))
+    plotcqt('{}_{}.wav'.format(save_path, args.epochs - 1), savepath='{}_cqt.png'.format(plot_path))
 
 
 if __name__ == '__main__':

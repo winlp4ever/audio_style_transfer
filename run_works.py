@@ -4,7 +4,7 @@ import time
 from dfeatinter import DeepFeatInterp
 from dfeatembed import DFeat
 from spectrogram import plotstft
-from rainbowgram import plotcqtgram
+from rainbowgram import plotcqt
 
 
 class DefaultList(argparse.Action):
@@ -108,7 +108,7 @@ def main():
               lambd=lambd)
 
     plotstft(os.path.join(data_fol, sname + '.wav'), plotpath=os.path.join(fig_fol, sname + 'spec.png'))
-    plotcqtgram(os.path.join(data_fol, sname + '.wav'), savepath=os.path.join(fig_fol, sname + 'cqt.png'))
+    plotcqt(os.path.join(data_fol, sname + '.wav'), savepath=os.path.join(fig_fol, sname + 'cqt.png'))
 
 
 if __name__ == '__main__':
