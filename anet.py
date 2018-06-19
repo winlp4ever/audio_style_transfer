@@ -109,7 +109,7 @@ class Net(object):
         embeds = np.concatenate(embeds, axis=0)
         return embeds
 
-    def dvd_embeds(self, sess, aud, l=None, batch_size=512):
+    def dvd_embeds(self, sess, aud, batch_size=512):
         if len(aud.shape) == 1:
             aud = np.reshape(aud, [1, self.length])
 
@@ -119,35 +119,40 @@ class Net(object):
         nb_batches = self.length // batch_size
 
         pieces = np.split(enc, nb_batches, axis=1)
-        if l is not None:
-            l.extend(pieces)
-        return pieces
+        mean = np.mean(pieces, axis=0)
+
+        return mean
 
     def cpt_differ(self, sess, type_s, type_t, batch_size):
         it = self.data.make_one_shot_iterator()
         el = it.get_next()
 
-        N_s, N_t = [], []
+        I_s, I_t = 0, 0
 
         try:
-            i = 0
+            i, j, k = 0, 0, 0
             while True:
                 i += 1
                 ins = sess.run(el['instrument_family'])
 
                 if ins == type_s:
+
                     audio = sess.run(el['audio'][:self.length])
-                    self.dvd_embeds(sess, audio, N_s, batch_size)
-                    tf.logging.info(' sources - size {} - iterate {}'.format(len(N_s), i))
+                    m_s = self.dvd_embeds(sess, audio, batch_size)
+                    I_s = (j * I_s + m_s) / (j + 1)
+                    tf.logging.info(' sources - size {} - iterate {}'.format(j, i))
+                    j += 1
 
                 elif ins == type_t:
                     audio = sess.run(el['audio'][:self.length])
-                    self.dvd_embeds(sess, audio, N_t, batch_size)
-                    tf.logging.info(' targets - size {} - iterate {}'.format(len(N_t), i))
+                    m_t = self.dvd_embeds(sess, audio, batch_size)
+                    I_t = (k * I_t + m_t) / (k + 1)
+                    tf.logging.info(' targets - size {} - iterate {}'.format(k, i))
+                    k += 1
+
         except tf.errors.OutOfRangeError:
             pass
 
-        I_s, I_t = np.mean(N_s, axis=0), np.mean(N_t, axis=0)
         w = I_t - I_s
 
         return w
