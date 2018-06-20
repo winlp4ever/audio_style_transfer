@@ -1,5 +1,4 @@
 import tensorflow as tf
-from geter import decode
 import numpy as np
 import librosa
 import os
@@ -10,11 +9,31 @@ from rainbowgram import plotcqt
 from mdl import Cfg
 import matplotlib.pyplot as plt
 
+plt.switch_backend('agg')
+
+
 tf.logging.set_verbosity(tf.logging.INFO)
 
 INS = ['bass', 'brass', 'flute', 'guitar',
        'keyboard', 'mallet', 'organ', 'reed',
        'string', 'synth_lead', 'vocal']
+
+
+def decode(serialized_example):
+    ex = tf.parse_single_example(
+        serialized_example,
+        features={
+            "note_str": tf.FixedLenFeature([], dtype=tf.string),
+            "pitch": tf.FixedLenFeature([1], dtype=tf.int64),
+            "velocity": tf.FixedLenFeature([1], dtype=tf.int64),
+            "audio": tf.FixedLenFeature([64000], dtype=tf.float32),
+            "qualities": tf.FixedLenFeature([10], dtype=tf.int64),
+            "instrument_source": tf.FixedLenFeature([1], dtype=tf.int64),
+            "instrument_family": tf.FixedLenFeature([1], dtype=tf.int64),
+        }
+    )
+
+    return ex['instrument_family'], ex['audio']
 
 
 def crt_t_fol(suppath, hour=False):
@@ -29,13 +48,15 @@ def crt_t_fol(suppath, hour=False):
     return fol_n
 
 
-def gt_s_path(suppath, s, t, fname, l, b, y, cmt):
+def gt_s_path(suppath, s, t, fname, l, b, y, r, cmt):
     if s != t:
         path = '{}2{}_{}_l{}_b{}_y'.format(INS[s], INS[t], fname, l, b)
     else:
         path = '{}_l{}_b{}_y'.format(fname, l, b)
     for i in y:
         path += str(i)
+    if r:
+        path += '_fr{}'.format(r)
     if cmt:
         path += '_{}'.format(cmt)
     path = os.path.join(suppath, path)
@@ -125,7 +146,7 @@ class Net(object):
 
     def cpt_differ(self, sess, type_s, type_t, batch_size):
         it = self.data.make_one_shot_iterator()
-        el = it.get_next()
+        type, aud = it.get_next()
 
         I_s, I_t = 0, 0
 
@@ -133,18 +154,16 @@ class Net(object):
             i, j, k = 0, 0, 0
             while True:
                 i += 1
-                ins = sess.run(el['instrument_family'])
+                ins, audio = sess.run([type, aud])
+                audio = audio[:self.length]
 
                 if ins == type_s:
-
-                    audio = sess.run(el['audio'][:self.length])
                     m_s = self.dvd_embeds(sess, audio, batch_size)
                     I_s = (j * I_s + m_s) / (j + 1)
                     tf.logging.info(' sources - size {} - iterate {}'.format(j, i))
                     j += 1
 
                 elif ins == type_t:
-                    audio = sess.run(el['audio'][:self.length])
                     m_t = self.dvd_embeds(sess, audio, batch_size)
                     I_t = (k * I_t + m_t) / (k + 1)
                     tf.logging.info(' targets - size {} - iterate {}'.format(k, i))
@@ -180,7 +199,7 @@ class Net(object):
 
         with tf.name_scope('loss'):
             loss = \
-                (1 - lambd) * tf.nn.l2_loss([(self.embeds[i] - encodings[i]) for i in range(len(self.layers))])
+                (1 - lambd) * tf.nn.l2_loss(tf.concat(self.embeds, axis=0) - encodings)
             tf.summary.scalar('loss', loss)
 
         summ = tf.summary.merge_all()
@@ -189,7 +208,8 @@ class Net(object):
 
         def loss_tracking(loss_, summ_):
             nonlocal i
-            tf.logging.info(' Step: {} -- Loss: {}'.format(i, loss_))
+            if not i % 5:
+                tf.logging.info(' Step: {} -- Loss: {}'.format(i, loss_))
             writer.add_summary(summ_, global_step=i)
             i += 1
 
@@ -204,7 +224,8 @@ class Net(object):
             since = int(time.time())
 
             optimizer.minimize(sess, loss_callback=loss_tracking, fetches=[loss, summ])
-            tf.logging.info(' Saving file ... Epoch: {} -- time-lapse: {}s'.format(ep, int(time.time() - since)))
+            tf.logging.info(' Saving file ... to fol {{{}}} \n \t Epoch: {}/{} -- Time-lapse: {}s'.
+                            format(self.spath, ep, epochs - 1, int(time.time() - since)))
 
             audio = sess.run(self.graph['quantized_input'])
             audio = inv_mu_law_numpy(audio)
@@ -214,7 +235,9 @@ class Net(object):
                 enc = self.get_embeds(sess, audio)
                 self.vis_actis(audio[0], enc, self.fig_dir, ep, self.layers)
 
-            librosa.output.write_wav(os.path.join(self.spath, 'ep-{}.wav'.format(ep)), audio[0], sr=self.sr)
+            sp = os.path.join(self.spath, 'ep-{}.wav'.format(ep))
+            librosa.output.write_wav(sp, audio[0], sr=self.sr)
+
 
     def run(self, type_s, type_t, epochs, lambd, batch_size):
         session_config = tf.ConfigProto(allow_soft_placement=True)
@@ -277,10 +300,11 @@ def main():
 
     args = prs.parse_args()
 
-    s, t, fn, l, b, y, cmt, e = args.s, args.t, args.filename, args.lambd, args.batch_size, args.layers, args.cmt, args.epochs
+    s, t, fn, l, b, y, r, cmt, e = args.s, args.t, args.filename, args.lambd, \
+                                   args.batch_size, args.layers, args.src_name, args.cmt, args.epochs
 
     savepath = crt_t_fol(args.out_dir)
-    savepath = gt_s_path(savepath, s, t, fn, l, b, y, cmt)
+    savepath = gt_s_path(savepath, s, t, fn, l, b, y, r, cmt)
 
     filepath = os.path.join(args.src_dir, fn + '.wav')
 
@@ -290,9 +314,9 @@ def main():
         src_path = None
 
     logdir = crt_t_fol(args.logdir)
-    logdir = gt_s_path(logdir, s, t, fn, l, b, y, cmt)
+    logdir = gt_s_path(logdir, s, t, fn, l, b, y, r, cmt)
     plotpath = crt_t_fol(args.fig_dir)
-    plotpath = gt_s_path(plotpath, s, t, fn, l, b, y, cmt)
+    plotpath = gt_s_path(plotpath, s, t, fn, l, b, y, r, cmt)
 
     net = Net(filepath, src_path, savepath, plotpath, args.tfpath, args.ckpt_path, logdir, args.layers, args.sr,
               args.length)
