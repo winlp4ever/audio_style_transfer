@@ -13,34 +13,20 @@ plt.switch_backend('agg')
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
-INS = ['bass',
-       'brass',
-       'flute',
-       'guitar',
-       'keyboard',
-       'mallet',
-       'organ',
-       'reed',
-       'string',
-       'synth_lead',
-       'vocal']
-
 
 def decode(serialized_example):
-    ex = tf.parse_single_example(
+    features = tf.parse_single_example(
         serialized_example,
         features={
-            "note_str": tf.FixedLenFeature([], dtype=tf.string),
-            "pitch": tf.FixedLenFeature([1], dtype=tf.int64),
-            "velocity": tf.FixedLenFeature([1], dtype=tf.int64),
-            "audio": tf.FixedLenFeature([64000], dtype=tf.float32),
-            "qualities": tf.FixedLenFeature([10], dtype=tf.int64),
-            "instrument_source": tf.FixedLenFeature([1], dtype=tf.int64),
-            "instrument_family": tf.FixedLenFeature([1], dtype=tf.int64),
+            'id': tf.FixedLenFeature([], dtype=tf.int64),
+            'audio': tf.FixedLenFeature([], dtype=tf.string)
         }
     )
 
-    return ex['instrument_family'], ex['instrument_source'], ex['audio']
+    id = tf.cast(features['id'], tf.int32)
+
+    audio = tf.decode_raw(features['audio'], tf.float32)
+    return id, audio
 
 
 def crt_t_fol(suppath, hour=False):
@@ -57,7 +43,7 @@ def crt_t_fol(suppath, hour=False):
 
 def gt_s_path(suppath, s, t, fname, l, b, y, r, cmt):
     if s != t:
-        path = '{}2{}_{}_l{}_b{}_y'.format(INS[s], INS[t], fname, l, b)
+        path = '{}2{}_{}_l{}_b{}_y'.format(s, t, fname, l, b)
     else:
         path = '{}_l{}_b{}_y'.format(fname, l, b)
     for i in y:
@@ -86,7 +72,7 @@ def inv_mu_law_numpy(x, mu=255.0):
     return out
 
 
-class Net(object):
+class SpeechNet(object):
     def __init__(self, trg_path, src_path, spath, fig_dir, tf_path, checkpoint_path, logdir, layers, sr, length):
         self.data = tf.data.TFRecordDataset([tf_path]).map(decode)
         self.checkpoint_path = checkpoint_path
@@ -151,9 +137,9 @@ class Net(object):
 
         return mean
 
-    def cpt_differ(self, sess, type_s, type_t, batch_size, nb_exs):
+    def cpt_differ(self, sess, id_s, id_t, batch_size, nb_exs):
         it = self.data.make_one_shot_iterator()
-        id, src, aud = it.get_next()
+        id, aud = it.get_next()
 
         I_s, I_t = 0, 0
 
@@ -161,15 +147,15 @@ class Net(object):
             i, j, k = 0, 0, 0
             while True:
                 i += 1
-                id_, src_, aud_ = sess.run([id, src, aud])
+                id_, aud_ = sess.run([id, aud])
                 aud_ = aud_[:self.length]
 
-                if id_ == type_s and src_ == 0 and j < nb_exs:
+                if id_ == id_s and j < nb_exs:
                     m_s = self.dvd_embeds(sess, aud_, batch_size)
                     I_s = (j * I_s + m_s) / (j + 1)
                     j += 1
 
-                elif id_ == type_t and src_ == 0 and k < nb_exs:
+                elif id_ == id_t and k < nb_exs:
                     m_t = self.dvd_embeds(sess, aud_, batch_size)
                     I_t = (k * I_t + m_t) / (k + 1)
                     k += 1
@@ -178,7 +164,7 @@ class Net(object):
                     break
 
                 tf.logging.info(' SRC: {} - size {} -- TRG: {} - size {} -- iter {}'.
-                                format(INS[type_s], j, INS[type_t], k, i))
+                                format(id_s, j, id_t, k, i))
 
         except tf.errors.OutOfRangeError:
             pass
@@ -255,7 +241,7 @@ class Net(object):
             sp = os.path.join(self.spath, 'ep-{}.wav'.format(ep))
             librosa.output.write_wav(sp, audio[0], sr=self.sr)
 
-    def run(self, type_s, type_t, epochs, lambd, batch_size, nb_exs):
+    def run(self, id_s, id_t, epochs, lambd, batch_size, nb_exs):
         session_config = tf.ConfigProto(allow_soft_placement=True)
         session_config.gpu_options.allow_growth = True
 
@@ -267,8 +253,8 @@ class Net(object):
             encodings = self.get_embeds(sess, self.wav)
 
             tf.logging.info('\nEnc shape: {}\n'.format(encodings.shape))
-            if type_s != type_t:
-                w = self.cpt_differ(sess, type_s, type_t, batch_size, nb_exs)
+            if id_s != id_t:
+                w = self.cpt_differ(sess, id_s, id_t, batch_size, nb_exs)
                 encodings = self.transform(encodings, w, self.length, batch_size)
 
             self.l_bfgs(sess, encodings, epochs, lambd)
@@ -285,8 +271,8 @@ def main():
     prs = argparse.ArgumentParser()
 
     prs.add_argument('filename', help='relative filename to transfer style.')
-    prs.add_argument('s', help='source type', type=int)
-    prs.add_argument('t', help='target type', type=int)
+    prs.add_argument('s', help='source id', type=int)
+    prs.add_argument('t', help='target id', type=int)
 
     prs.add_argument('--src_dir', help='dir where found files to be style-transferred',
                      nargs='?', default='./data/src')
@@ -301,8 +287,7 @@ def main():
     prs.add_argument('-p', '--ckpt_path', help='checkpoint path', nargs='?',
                      default='./nsynth/model/wavenet-ckpt/model.ckpt-200000')
     prs.add_argument('-t', '--tfpath', help='TFRecord Dataset s path', nargs='?',
-                     default='./data/dataset/nsynth-train.tfrecord',
-                     const='./data/dataset/nsynth-valid.tfrecord')
+                     default='./data/dataset/aac-test.tfrecord')
     prs.add_argument('--logdir', help='logging directory', nargs='?',
                      default='./log')
     prs.add_argument('-e', '--epochs', help='number of epochs', nargs='?', type=int, default=10)
@@ -336,8 +321,8 @@ def main():
     plotpath = crt_t_fol(args.fig_dir)
     plotpath = gt_s_path(plotpath, s, t, fn, l, b, y, r, cmt)
 
-    net = Net(filepath, src_path, savepath, plotpath, args.tfpath, args.ckpt_path, logdir, args.layers, args.sr,
-              args.length)
+    net = SpeechNet(filepath, src_path, savepath, plotpath, args.tfpath, args.ckpt_path, logdir, args.layers, args.sr,
+                    args.length)
     net.run(s, t, e, l, b, args.nb_exs)
 
     # save spec and cqt figs
