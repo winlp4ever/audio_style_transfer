@@ -101,7 +101,7 @@ class ShowOff(object):
     @staticmethod
     def vis_actis(aud, enc, fig_dir, ep, layer_ids, nb_channels=5, dspl=256, output_file=False):
         nb_layers = enc.shape[0]
-        fig, axs = plt.subplots(nb_layers + 1, 3, figsize=(30, 5 * nb_layers))
+        fig, axs = plt.subplots(nb_layers + 1, 3, figsize=(30, 10 * nb_layers))
         axs[0, 1].plot(aud)
         axs[0, 1].set_title('Audio Signal')
         axs[0, 0].axis('off')
