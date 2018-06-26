@@ -8,29 +8,43 @@ from spectrogram import plotstft
 from rainbowgram import plotcqt
 from mdl import Cfg
 import matplotlib.pyplot as plt
+from nmf import nmf
+from numpy.linalg import norm, lstsq
+from sklearn.decomposition import NMF
+from optimal_transport import compute_permutation
 
 plt.switch_backend('agg')
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
-MALE = [17, 61, 81, 154, 562, 817, 866, 926, 1041, 1066, 1106, 1298, 1437,
-        1509, 1541, 1593]
-FEMALE = [419, 812, 1000, 1224, 1228, 1333, 1460, 1567, 1618]
+INS = ['bass',
+       'brass',
+       'flute',
+       'guitar',
+       'keyboard',
+       'mallet',
+       'organ',
+       'reed',
+       'string',
+       'synth_lead',
+       'vocal']
 
 
 def decode(serialized_example):
-    features = tf.parse_single_example(
+    ex = tf.parse_single_example(
         serialized_example,
         features={
-            'id': tf.FixedLenFeature([], dtype=tf.int64),
-            'audio': tf.FixedLenFeature([], dtype=tf.string)
+            "note_str": tf.FixedLenFeature([], dtype=tf.string),
+            "pitch": tf.FixedLenFeature([1], dtype=tf.int64),
+            "velocity": tf.FixedLenFeature([1], dtype=tf.int64),
+            "audio": tf.FixedLenFeature([64000], dtype=tf.float32),
+            "qualities": tf.FixedLenFeature([10], dtype=tf.int64),
+            "instrument_source": tf.FixedLenFeature([1], dtype=tf.int64),
+            "instrument_family": tf.FixedLenFeature([1], dtype=tf.int64),
         }
     )
 
-    id = tf.cast(features['id'], tf.int32)
-
-    audio = tf.decode_raw(features['audio'], tf.float32)
-    return id, audio
+    return ex['instrument_family'], ex['instrument_source'], ex['audio']
 
 
 def crt_t_fol(suppath, hour=False):
@@ -45,12 +59,11 @@ def crt_t_fol(suppath, hour=False):
     return fol_n
 
 
-def gt_s_path(suppath, m2f, fname, l, b, y, r, cmt):
-    path = '{}_l{}_b{}_y'.format(fname, l, b)
-    if m2f == 0:
-        path = 'f2m_' + path
-    elif m2f == 1:
-        path = 'm2f_' + path
+def gt_s_path(suppath, s, t, fname, l, b, y, r, cmt):
+    if s != t:
+        path = '{}2{}_{}_l{}_b{}_y'.format(INS[s], INS[t], fname, l, b)
+    else:
+        path = '{}_l{}_b{}_y'.format(fname, l, b)
     for i in y:
         path += str(i)
     if r:
@@ -77,7 +90,7 @@ def inv_mu_law_numpy(x, mu=255.0):
     return out
 
 
-class SpeechNet(object):
+class Net(object):
     def __init__(self, trg_path, src_path, spath, fig_dir, tf_path, checkpoint_path, logdir, layers, sr, length):
         self.data = tf.data.TFRecordDataset([tf_path]).map(decode)
         self.checkpoint_path = checkpoint_path
@@ -142,47 +155,68 @@ class SpeechNet(object):
 
         return mean
 
-    def cpt_differ(self, sess, male2female, batch_size, nb_exs):
+    def cpt_differ(self, sess, type_s, type_t, batch_size, nb_exs):
         it = self.data.make_one_shot_iterator()
-        id, aud = it.get_next()
+        id, src, aud = it.get_next()
 
-        I_m, I_f = 0, 0
+        I_s, I_t = [], []
 
         try:
             i, j, k = 0, 0, 0
             while True:
                 i += 1
-                id_, aud_ = sess.run([id, aud])
+                id_, src_, aud_ = sess.run([id, src, aud])
                 aud_ = aud_[:self.length]
 
-                if id_ in MALE and j < nb_exs:
+                if id_ == type_s and src_ == 0 and j < nb_exs:
                     m_s = self.dvd_embeds(sess, aud_, batch_size)
-                    I_m = (j * I_m + m_s) / (j + 1)
+                    I_s.append(m_s)
                     j += 1
 
-                elif id_ in FEMALE and k < nb_exs:
+                elif id_ == type_t and src_ == 0 and k < nb_exs:
                     m_t = self.dvd_embeds(sess, aud_, batch_size)
-                    I_f = (k * I_f + m_t) / (k + 1)
+                    I_t.append(m_t)
                     k += 1
 
                 elif j == nb_exs and k == nb_exs:
                     break
 
-                tf.logging.info(' MALE - size {} -- FEMALE - size {} -- iter {}'.
-                                format(j, k, i))
+                tf.logging.info(' SRC: {} - size {} -- TRG: {} - size {} -- iter {}'.
+                                format(INS[type_s], j, INS[type_t], k, i))
 
         except tf.errors.OutOfRangeError:
             pass
 
-        w = I_f - I_m if male2female else I_m - I_f
+        f = lambda u: np.reshape(np.concatenate(u, axis=1), [128, -1])
+        phi_s, phi_t = f(I_s), f(I_t)
 
-        return w
+        tf.logging.info('\n phi_s: size {} -- phi_t: size {}'.
+                        format(phi_s.shape, phi_t.shape))
+
+        tf.logging.info(' begin nmf ...')
+
+        nmf_ = NMF(n_components=nb_exs, init='random', random_state=0, solver='mu', max_iter=400)
+        since_s = time.time()
+        w_s, h_s = nmf_.fit_transform(phi_s), nmf_.components_
+        tf.logging.info(' done for s. Time-lapse : {}'.format(time.time() - since_s))
+        tf.logging.info(' LOSS s: {}'.format(norm(phi_s - np.matmul(w_s, h_s))))
+
+        since_t = time.time()
+        w_t, h_t = nmf_.fit_transform(phi_t), nmf_.components_
+        tf.logging.info(' done for t. Time-lapse : {}'.format(time.time() - since_t))
+        tf.logging.info(' LOSS t: {}'.format(norm(phi_t - np.matmul(w_t, h_t))))
+
+        return w_s, w_t
 
     @staticmethod
-    def transform(enc, w, length, batch_size):
-        a = [w for _ in range(length // batch_size)]
-        a = np.concatenate(a, axis=1)
-        return enc + a
+    def transform(enc, ws, wt, length, batch_size):
+        enc = np.reshape(enc, [128, -1])
+        h_, _, _, _ = lstsq(ws, enc, rcond=None)
+
+        print('\n h_ size {}'.format(h_.shape))
+        wt = compute_permutation(ws, wt)
+
+        return np.reshape(np.matmul(wt, h_), [1, -1, 128])
 
     @staticmethod
     def vis_actis(aud, enc, fig_dir, ep, layers, nb_channels=5, dspl=256):
@@ -244,11 +278,10 @@ class SpeechNet(object):
                 self.vis_actis(audio[0], enc, self.fig_dir, ep, self.layers)
 
             sp = os.path.join(self.spath, 'ep-{}.wav'.format(ep))
-            librosa.output.write_wav(sp, audio[0], sr=self.sr)
 
-    def run(self, m2f, epochs, lambd, batch_size, nb_exs):
-        assert 0 <= m2f <= 2
+            librosa.output.write_wav(sp, audio[0]/np.max(audio[0]), sr=self.sr)
 
+    def run(self, type_s, type_t, epochs, lambd, batch_size, nb_exs):
         session_config = tf.ConfigProto(allow_soft_placement=True)
         session_config.gpu_options.allow_growth = True
 
@@ -260,9 +293,9 @@ class SpeechNet(object):
             encodings = self.get_embeds(sess, self.wav)
 
             tf.logging.info('\nEnc shape: {}\n'.format(encodings.shape))
-            if m2f < 2:
-                w = self.cpt_differ(sess, m2f, batch_size, nb_exs)
-                encodings = self.transform(encodings, w, self.length, batch_size)
+            if type_s != type_t:
+                ws, wt = self.cpt_differ(sess, type_s, type_t, batch_size, nb_exs)
+                encodings = self.transform(encodings, ws, wt, self.length, batch_size)
 
             self.l_bfgs(sess, encodings, epochs, lambd)
 
@@ -278,7 +311,8 @@ def main():
     prs = argparse.ArgumentParser()
 
     prs.add_argument('filename', help='relative filename to transfer style.')
-    prs.add_argument('male2female', help='source id', type=int)
+    prs.add_argument('s', help='source type', type=int)
+    prs.add_argument('t', help='target type', type=int)
 
     prs.add_argument('--src_dir', help='dir where found files to be style-transferred',
                      nargs='?', default='./data/src')
@@ -293,7 +327,8 @@ def main():
     prs.add_argument('-p', '--ckpt_path', help='checkpoint path', nargs='?',
                      default='./nsynth/model/wavenet-ckpt/model.ckpt-200000')
     prs.add_argument('-t', '--tfpath', help='TFRecord Dataset s path', nargs='?',
-                     default='./data/dataset/aac-test.tfrecord')
+                     default='./data/dataset/nsynth-train.tfrecord',
+                     const='./data/dataset/nsynth-valid.tfrecord')
     prs.add_argument('--logdir', help='logging directory', nargs='?',
                      default='./log')
     prs.add_argument('-e', '--epochs', help='number of epochs', nargs='?', type=int, default=10)
@@ -301,7 +336,7 @@ def main():
     prs.add_argument('--length', help='duration of wav file -- unit: nb of samples', nargs='?',
                      type=int, default=16384)
     prs.add_argument('--sr', help='sampling rate', nargs='?', type=int, default=16000)
-    prs.add_argument('--batch_size', help='batch size', nargs='?', type=int, default=512, const=16384)
+    prs.add_argument('--batch_size', help='batch size', nargs='?', type=int, const=512, default=16384)
     prs.add_argument('--nb_exs', help='number examples', nargs='?', type=int, default=1000)
     prs.add_argument('--layers', help='list of layer enums for embeddings', nargs='*',
                      type=int, action=DefaultList, default=[29])
@@ -309,11 +344,11 @@ def main():
 
     args = prs.parse_args()
 
-    m2f, fn, l, b, y, r, cmt, e = args.male2female, args.filename, args.lambd, \
+    s, t, fn, l, b, y, r, cmt, e = args.s, args.t, args.filename, args.lambd, \
                                    args.batch_size, args.layers, args.src_name, args.cmt, args.epochs
 
     savepath = crt_t_fol(args.out_dir)
-    savepath = gt_s_path(savepath, m2f, fn, l, b, y, r, cmt)
+    savepath = gt_s_path(savepath, s, t, fn, l, b, y, r, cmt)
 
     filepath = os.path.join(args.src_dir, fn + '.wav')
 
@@ -323,13 +358,13 @@ def main():
         src_path = None
 
     logdir = crt_t_fol(args.logdir)
-    logdir = gt_s_path(logdir, m2f, fn, l, b, y, r, cmt)
+    logdir = gt_s_path(logdir, s, t, fn, l, b, y, r, cmt)
     plotpath = crt_t_fol(args.fig_dir)
-    plotpath = gt_s_path(plotpath, m2f, fn, l, b, y, r, cmt)
+    plotpath = gt_s_path(plotpath, s, t, fn, l, b, y, r, cmt)
 
-    net = SpeechNet(filepath, src_path, savepath, plotpath, args.tfpath, args.ckpt_path, logdir, args.layers, args.sr,
-                    args.length)
-    net.run(m2f, e, l, b, args.nb_exs)
+    net = Net(filepath, src_path, savepath, plotpath, args.tfpath, args.ckpt_path, logdir, args.layers, args.sr,
+              args.length)
+    net.run(s, t, e, l, b, args.nb_exs)
 
     # save spec and cqt figs
     plotstft(os.path.join(savepath, 'ep-{}.wav'.format(e - 1)), plotpath=os.path.join(plotpath, 'spec.png'))

@@ -8,6 +8,11 @@ import argparse
 import time
 from spectrogram import plotstft
 
+MALE = [17, 61, 81, 154, 562, 817, 866, 926, 1041, 1066, 1106, 1298, 1437,
+        1509, 1541, 1593]
+FEMALE = [419, 812, 1000, 1224, 1228, 1333, 1460, 1567, 1618]
+
+
 plt.switch_backend('agg')
 
 tf.logging.set_verbosity(tf.logging.INFO)
@@ -25,31 +30,29 @@ def crt_t_fol(suppath, hour=False):
     return fol_n
 
 
-def gt_spath(suppath, ins_type, layers_ids, cmt=None):
+def gt_spath(suppath, male, layers_ids):
+    s = 'male' if male else 'female'
     for id in layers_ids:
-        ins_type += '_' + str(id)
-    path = os.path.join(suppath, ins_type)
-    if cmt:
-        path += '_{}'.format(cmt)
+        s += '_' + str(id)
+    path = os.path.join(suppath, s)
     if not os.path.exists(path):
         os.makedirs(path)
     return path
 
 
 def decode(serialized_example):
-    ex = tf.parse_single_example(
+    features = tf.parse_single_example(
         serialized_example,
         features={
-            "note_str": tf.FixedLenFeature([], dtype=tf.string),
-            "pitch": tf.FixedLenFeature([1], dtype=tf.int64),
-            "velocity": tf.FixedLenFeature([1], dtype=tf.int64),
-            "audio": tf.FixedLenFeature([64000], dtype=tf.float32),
-            "qualities": tf.FixedLenFeature([10], dtype=tf.int64),
-            "instrument_source": tf.FixedLenFeature([1], dtype=tf.int64),
-            "instrument_family": tf.FixedLenFeature([1], dtype=tf.int64),
+            'id': tf.FixedLenFeature([], dtype=tf.int64),
+            'audio': tf.FixedLenFeature([], dtype=tf.string)
         }
     )
-    return ex['instrument_family'], ex['instrument_source'], ex['audio']
+
+    id = tf.cast(features['id'], tf.int32)
+
+    audio = tf.decode_raw(features['audio'], tf.float32)
+    return id, audio
 
 
 def mu_law(x, mu=255, int8=False):
@@ -62,17 +65,7 @@ def mu_law(x, mu=255, int8=False):
 
 class ShowOff(object):
     def __init__(self, tfpath, ckptpath, figdir, layer_ids, length, sr):
-        self.map = {'bass': 0,
-                    'brass': 1,
-                    'flute': 2,
-                    'guitar': 3,
-                    'keyboard': 4,
-                    'mallet': 5,
-                    'organ': 6,
-                    'reed': 7,
-                    'string': 8,
-                    'synth_lead': 9,
-                    'vocal': 10}
+
         self.data = tf.data.TFRecordDataset([tfpath]).map(decode)
         self.checkpoint_path = ckptpath
         self.figdir = figdir
@@ -82,7 +75,7 @@ class ShowOff(object):
 
     def build(self):
         it = self.data.make_one_shot_iterator()
-        id, src, aud = it.get_next()
+        id, aud = it.get_next()
 
         config = Cfg()
         with tf.device("/gpu:0"):
@@ -92,7 +85,7 @@ class ShowOff(object):
             graph = config.build({'quantized_wav': x}, is_training=True)
 
         layers = [config.extracts[i] for i in self.layer_ids]
-        return id, src, aud, graph, layers
+        return id, aud, graph, layers
 
     def load_model(self, sess):
         variables = tf.global_variables()
@@ -150,12 +143,11 @@ class ShowOff(object):
         if output_file:
             librosa.output.write_wav(sp + '.wav', aud, sr=16000)
 
-    def run(self, ins_type, nb_exs, nb_channels, dspl, output_file, ens, cmt):
-        tpe = self.map[ins_type]
+    def run(self, male, nb_exs, nb_channels, dspl, output_file, ens):
+        s = MALE if male else FEMALE
+        figdir = gt_spath(self.figdir, male, self.layer_ids)
 
-        figdir = gt_spath(self.figdir, ins_type, self.layer_ids, cmt)
-
-        id, src, aud, graph, layers = self.build()
+        id, aud, graph, layers = self.build()
 
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
@@ -166,19 +158,14 @@ class ShowOff(object):
                 j = 0
                 i = 0
                 while i < nb_exs:
-                    id_, src_, aud_ = sess.run([id, src, aud])
+                    id_, aud_ = sess.run([id, aud])
 
-                    if tpe == id_ and src_ == 0:
+                    if id_ in s:
                         i += 1
-                        #aud_ = librosa.effects.pitch_shift(aud_, sr=self.sr, n_steps=0.5)
-                        #a = np.zeros((64000,))
-                        #a[512 : ] = aud_[:-512]
                         actis = sess.run(layers, feed_dict={
                             aud: aud_
                         })
-
                         actis = np.concatenate(actis, axis=0)
-                        assert (actis >= 0).all()
                         if ens:
                             self.vis_actis_ens(aud_, actis, figdir, i, self.layer_ids, nb_channels, dspl, output_file)
                         else:
@@ -202,11 +189,9 @@ def main():
 
     prs = argparse.ArgumentParser()
 
-    prs.add_argument('ins', help='instrument family')
-    prs.add_argument('--source', '--instrument_source', help='instrument source', type=int,
-                     nargs='?', default=0)
+    prs.add_argument('--male', help='male or female', nargs='?', type=bool, default=False, const=True)
     prs.add_argument('--tfpath', help='.tfrecord dataset path', nargs='?',
-                     default='./data/dataset/nsynth-train.tfrecord')
+                     default='./data/dataset/aac-test.tfrecord')
     prs.add_argument('--ckptpath', help='checkpoint path', nargs='?',
                      default='./nsynth/model/wavenet-ckpt/model.ckpt-200000')
     prs.add_argument('--figdir', help='where to store figures', nargs='?',
@@ -227,13 +212,12 @@ def main():
                      default=[4, 9, 14, 19, 24, 29])
     prs.add_argument('--ens', help='view entirely or only partially original input signal',
                      nargs='?', default=False, const=True, type=bool)
-    prs.add_argument('--cmt', help='comment')
 
     args = prs.parse_args()
 
     figdir = crt_t_fol(args.figdir)
     showoff = ShowOff(args.tfpath, args.ckptpath, figdir, args.layers, args.length, args.sr)
-    showoff.run(args.ins, args.nb_exs, args.nb_channels, args.dspl, args.output_file, args.ens, args.cmt)
+    showoff.run(args.male, args.nb_exs, args.nb_channels, args.dspl, args.output_file, args.ens)
 
 
 if __name__ == '__main__':

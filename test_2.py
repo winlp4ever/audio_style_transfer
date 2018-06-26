@@ -1,10 +1,12 @@
+import tensorflow as tf
 import numpy as np
 
-import scipy.io.wavfile as wav
-import glob
-import ntpath
+x = tf.placeholder(tf.float32, [1, 2])
+y = x**2
+u = []
+u.append(y)
+y += 2
+u.append(y)
 
-if __name__ == '__main__':
-    for filename in glob.iglob('./data/**'):
-        print(ntpath.basename(filename))
-print('{{{}}}'.format(2))
+with tf.Session() as sess:
+    print(sess.run(u, feed_dict={x : np.array([[1, 2]])}))

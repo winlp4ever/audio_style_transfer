@@ -183,7 +183,7 @@ class Net(object):
         except tf.errors.OutOfRangeError:
             pass
 
-        w = I_t - I_s
+        w = I_t
 
         return w
 
@@ -196,7 +196,7 @@ class Net(object):
     @staticmethod
     def vis_actis(aud, enc, fig_dir, ep, layers, nb_channels=5, dspl=256):
         nb_layers = enc.shape[0]
-        fig, axs = plt.subplots(nb_layers + 1, 3, figsize=(30, 5 * nb_layers))
+        fig, axs = plt.subplots(nb_layers + 1, 3, figsize=(30, 5 * (nb_layers + 1)))
         axs[0, 1].plot(aud)
         axs[0, 1].set_title('Audio Signal')
         axs[0, 0].axis('off')
@@ -313,7 +313,7 @@ def main():
     prs.add_argument('--batch_size', help='batch size', nargs='?', type=int, default=512, const=16384)
     prs.add_argument('--nb_exs', help='number examples', nargs='?', type=int, default=1000)
     prs.add_argument('--layers', help='list of layer enums for embeddings', nargs='*',
-                     type=int, action=DefaultList, default=[30])
+                     type=int, action=DefaultList, default=[29])
     prs.add_argument('--cmt', help='comment')
 
     args = prs.parse_args()

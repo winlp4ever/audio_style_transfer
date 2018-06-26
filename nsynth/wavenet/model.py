@@ -236,19 +236,15 @@ class Config(object):
                 name='ae_dilatedconv_%d' % (num_layer + 1))
             d_enc = tf.nn.relu(d_enc)
 
-            # ADD-----
-            d_enc_ = d_enc
-            self.extracts.append(d_enc_)
-            # --------
-
             enc += masked.conv1d(
                 d_enc,
                 num_filters=ae_width,
                 filter_length=1,
                 name='ae_res_%d' % (num_layer + 1))
 
-        enc_ = enc
-        self.extracts.append(enc_)
+            # ADD-----
+            self.extracts.append(enc)
+            # --------
 
         enc = masked.conv1d(
             enc,

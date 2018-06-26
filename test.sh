@@ -12,5 +12,5 @@ fi
 
 for i in 1 2 3
 do 
-    [[ -n ${!i} ]] && python compare.py "${!i}" --nb_exs 200 $params
+    [[ -n ${!i} ]] && python compare.py "${!i}" --nb_exs 200 --ens $params
 done
