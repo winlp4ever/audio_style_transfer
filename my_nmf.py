@@ -12,29 +12,30 @@ class MyNMF(object):
         assert len(size_in) == 2
         f, t = size_in
 
-        tf.reset_default_graph()
-        mat = tf.placeholder(tf.float32, shape=size_in, name='mat')
-        W = tf.Variable(tf.random_uniform([f, n_components], minval=0., maxval=1.), dtype=tf.float32, name='W')
-        H = tf.Variable(tf.random_uniform([n_components, t], minval=0., maxval=1.), dtype=tf.float32, name='H')
+        with tf.device("/gpu:0"):
+            tf.reset_default_graph()
+            mat = tf.placeholder(tf.float32, shape=size_in, name='mat')
+            W = tf.Variable(tf.random_uniform([f, n_components], minval=0., maxval=1.), dtype=tf.float32, name='W')
+            H = tf.Variable(tf.random_uniform([n_components, t], minval=0., maxval=1.), dtype=tf.float32, name='H')
 
-        clip_W = W.assign(tf.maximum(tf.zeros_like(W), W))
-        clip_H = H.assign(tf.maximum(tf.zeros_like(H), H))
-        clip = tf.group(clip_W, clip_H)
+            clip_W = W.assign(tf.maximum(tf.zeros_like(W), W))
+            clip_H = H.assign(tf.maximum(tf.zeros_like(H), H))
+            clip = tf.group(clip_W, clip_H)
 
-        with tf.name_scope('loss'):
-            xent = tf.norm(mat - tf.matmul(W, H))
-            tf.summary.scalar('nmf_loss', xent)
+            with tf.name_scope('loss'):
+                xent = tf.norm(mat - tf.matmul(W, H))
+                tf.summary.scalar('nmf_loss', xent)
 
 
-        with tf.name_scope('optim'):
-            optimizer = tf.contrib.opt.ScipyOptimizerInterface(
-                xent,
-                method='L-BFGS-B',
-                options={'maxiter': 100})
+            with tf.name_scope('optim'):
+                optimizer = tf.contrib.opt.ScipyOptimizerInterface(
+                    xent,
+                    method='L-BFGS-B',
+                    options={'maxiter': 100})
 
-        self.learning_rate = learning_rate
-        self.size_in = size_in
-        self.graph = {'mat_in' : mat,
+            self.learning_rate = learning_rate
+            self.size_in = size_in
+            self.graph = {'mat_in' : mat,
                       'w' : W,
                       'h' : H,
                       'loss': xent,
@@ -42,7 +43,9 @@ class MyNMF(object):
                       'clip': clip}
 
     def fit_transform(self, X, epochs):
-        with tf.Session() as sess:
+        session_config = tf.ConfigProto(allow_soft_placement=True)
+        session_config.gpu_options.allow_growth = True
+        with tf.Session(config=session_config) as sess:
 
             i = 0
             def loss_tracking(loss_):
@@ -53,7 +56,7 @@ class MyNMF(object):
 
             sess.run(tf.global_variables_initializer())
 
-            while i < epochs:
+            for _ in range(epochs):
                 self.graph['optim'].minimize(sess,
                                              loss_callback=loss_tracking,
                                              fetches=[self.graph['loss']],
