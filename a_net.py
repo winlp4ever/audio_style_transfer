@@ -43,7 +43,7 @@ def decode(serialized_example):
         }
     )
 
-    return ex['instrument_family'], ex['instrument_source'], ex['audio']
+    return ex['instrument_family'], ex['instrument_source'], ex['qualities'], ex['audio']
 
 
 def crt_t_fol(suppath, hour=False):
@@ -135,6 +135,9 @@ class Net(object):
         saver.restore(sess, self.checkpoint_path)
 
     def get_embeds(self, sess, aud):
+        if len(aud.shape) < 2:
+            aud = np.reshape(aud, [1, -1])
+
         embeds = sess.run(self.embeds,
                           feed_dict={self.graph['quantized_input']: mu_law_numpy(aud)})
         embeds = np.concatenate(embeds, axis=0)
@@ -143,7 +146,7 @@ class Net(object):
 
     def cpt_differ(self, sess, type_s, type_t, nb_exs):
         it = self.data.make_one_shot_iterator()
-        id, src, aud = it.get_next()
+        id, src, qua, aud = it.get_next()
 
         I_s, I_t = [], []
 
@@ -151,15 +154,15 @@ class Net(object):
             i, j, k = 0, 0, 0
             while True:
                 i += 1
-                id_, src_, aud_ = sess.run([id, src, aud])
+                id_, src_, qua_, aud_ = sess.run([id, src, qua, aud])
                 aud_ = aud_[:self.length]
 
-                if id_ == type_s and src_ == 0 and j < nb_exs:
+                if id_ == type_s and src_ == 0 and qua_[[1]] == 1 and j < nb_exs:
                     m_s = self.get_embeds(sess, aud_)
                     I_s.append(m_s)
                     j += 1
 
-                elif id_ == type_t and src_ == 0 and k < nb_exs:
+                elif id_ == type_t and src_ == 0 and qua_[[0]] == 1 and k < nb_exs:
                     m_t = self.get_embeds(sess, aud_)
                     I_t.append(m_t)
                     k += 1
@@ -173,33 +176,38 @@ class Net(object):
         except tf.errors.OutOfRangeError:
             pass
 
-        f = lambda u : np.reshape(np.concatenate(I_s, axis=1), [128, -1])
+        #============================== NMF ==============================
+        n_components = 40
+
+        f = lambda u : (np.concatenate(u, axis=1))[0].T
         phi_s, phi_t = f(I_s), f(I_t)
 
         tf.logging.info(' begin nmf ...')
-        nmf = NMF(n_components=20, init='random', random_state=0, max_iter=400)
+        nmf = NMF(n_components=n_components, init='random', random_state=0, max_iter=400, solver='mu')
 
         since_s = time.time()
         ws, hs = nmf.fit_transform(phi_s), nmf.components_
         tf.logging.info(' done for s. Time-lapse: {} \n Error: {}'.
-                        format(time.time() - since_s, norm(phi_s - np.matmul(ws, hs))))
+                        format(time.time() - since_s, norm(phi_s - np.matmul(ws, hs)) / norm(phi_s)))
 
         since_t = time.time()
         wt, ht = nmf.fit_transform(phi_t), nmf.components_
         tf.logging.info(' done for t. Time-lapse: {} \n Error: {}'.
-                        format(time.time() - since_t, norm(phi_t - np.matmul(wt, ht))))
+                        format(time.time() - since_t, norm(phi_t - np.matmul(wt, ht)) / norm(phi_t)))
 
         return ws, wt
 
     @staticmethod
     def transform(enc, ws, wt):
+        enc = enc[0].T
         h_, _, _, _ = lstsq(ws, enc, rcond=None)
 
         wt = compute_permutation(ws, wt)
 
-        tf.logging.info(' Error for ws * h_ = enc: {}'.format(norm(enc - np.matmul(ws, h_))))
+        tf.logging.info(' Error for ws * h_ = enc: {}'.format(norm(enc - np.matmul(ws, h_)) / norm(enc)))
 
-        return np.matmul(wt, h_)
+        u = np.matmul(wt, h_)
+        return np.expand_dims(u.transpose(), axis=0)
 
     @staticmethod
     def vis_actis(aud, enc, fig_dir, ep, layers, nb_channels=5, dspl=256):
@@ -265,7 +273,7 @@ class Net(object):
 
     @staticmethod
     def regen_embeds(embeds):
-        batch_size = 32
+        batch_size = 16
 
         rshpe = np.reshape(embeds, [1, -1, batch_size, 128])
         mean = np.mean(rshpe, axis=2)

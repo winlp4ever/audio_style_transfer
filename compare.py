@@ -12,6 +12,10 @@ plt.switch_backend('agg')
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
+ACOUSTIC = 0
+ELECTRONIC = 1
+SYNTHETIC = 2
+
 
 def crt_t_fol(suppath, hour=False):
     dte = time.localtime()
@@ -49,7 +53,7 @@ def decode(serialized_example):
             "instrument_family": tf.FixedLenFeature([1], dtype=tf.int64),
         }
     )
-    return ex['instrument_family'], ex['instrument_source'], ex['audio']
+    return ex['instrument_family'], ex['instrument_source'], ex['qualities'], ex['audio']
 
 
 def mu_law(x, mu=255, int8=False):
@@ -62,17 +66,17 @@ def mu_law(x, mu=255, int8=False):
 
 class ShowOff(object):
     def __init__(self, tfpath, ckptpath, figdir, layer_ids, length, sr):
-        self.map = {'bass': 0,
-                    'brass': 1,
-                    'flute': 2,
-                    'guitar': 3,
-                    'keyboard': 4,
-                    'mallet': 5,
-                    'organ': 6,
-                    'reed': 7,
-                    'string': 8,
-                    'synth_lead': 9,
-                    'vocal': 10}
+        self.ins_fam = {'bass': 0,
+                        'brass': 1,
+                        'flute': 2,
+                        'guitar': 3,
+                        'keyboard': 4,
+                        'mallet': 5,
+                        'organ': 6,
+                        'reed': 7,
+                        'string': 8,
+                        'synth_lead': 9,
+                        'vocal': 10}
         self.data = tf.data.TFRecordDataset([tfpath]).map(decode)
         self.checkpoint_path = ckptpath
         self.figdir = figdir
@@ -82,7 +86,7 @@ class ShowOff(object):
 
     def build(self):
         it = self.data.make_one_shot_iterator()
-        id, src, aud = it.get_next()
+        id, src, qua, aud = it.get_next()
 
         config = Cfg()
         with tf.device("/gpu:0"):
@@ -92,7 +96,7 @@ class ShowOff(object):
             graph = config.build({'quantized_wav': x}, is_training=True)
 
         layers = [config.extracts[i] for i in self.layer_ids]
-        return id, src, aud, graph, layers
+        return id, src, qua, aud, graph, layers
 
     def load_model(self, sess):
         variables = tf.global_variables()
@@ -117,7 +121,7 @@ class ShowOff(object):
             axs[i + 1, 2].set_title('Embeds layer {} part 2'.format(layer_ids[i]))
 
         sp = os.path.join(fig_dir, 'f-{}'.format(ep))
-        plt.savefig(sp+'.png', dpi=50)
+        plt.savefig(sp + '.png', dpi=50)
         if output_file:
             librosa.output.write_wav(sp + '.wav', aud, sr=16000)
 
@@ -150,12 +154,14 @@ class ShowOff(object):
         if output_file:
             librosa.output.write_wav(sp + '.wav', aud, sr=16000)
 
-    def run(self, ins_type, nb_exs, nb_channels, dspl, output_file, ens, cmt):
-        tpe = self.map[ins_type]
+    def run(self, ins_type, ins_src, qualities, nb_exs, nb_channels, dspl, output_file, ens, cmt):
+        assert 0 <= ins_src <= 2
+
+        tpe = self.ins_fam[ins_type]
 
         figdir = gt_spath(self.figdir, ins_type, self.layer_ids, cmt)
 
-        id, src, aud, graph, layers = self.build()
+        id, src, qua, aud, graph, layers = self.build()
 
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
@@ -166,13 +172,13 @@ class ShowOff(object):
                 j = 0
                 i = 0
                 while i < nb_exs:
-                    id_, src_, aud_ = sess.run([id, src, aud])
+                    id_, src_, qua_, aud_ = sess.run([id, src, qua, aud])
 
-                    if tpe == id_ and src_ == 0:
+                    if tpe == id_ and src_ == ins_src and (qua_[qualities] == 1).all():
                         i += 1
-                        #aud_ = librosa.effects.pitch_shift(aud_, sr=self.sr, n_steps=0.5)
-                        #a = np.zeros((64000,))
-                        #a[512 : ] = aud_[:-512]
+                        # aud_ = librosa.effects.pitch_shift(aud_, sr=self.sr, n_steps=-5.)
+                        # a = np.zeros((64000,))
+                        # a[512 : ] = aud_[:-512]
                         actis = sess.run(layers, feed_dict={
                             aud: aud_
                         })
@@ -197,7 +203,7 @@ def main():
 
         def __call__(self, parser, namespace, values, option_string=None):
             if len(values) == 0:
-                values = [30]
+                values = [29]
             setattr(namespace, self.dest, values)
 
     prs = argparse.ArgumentParser()
@@ -205,6 +211,7 @@ def main():
     prs.add_argument('ins', help='instrument family')
     prs.add_argument('--source', '--instrument_source', help='instrument source', type=int,
                      nargs='?', default=0)
+    prs.add_argument('--qualities', help='note qualities', type=int, nargs='*', action=DefaultList, default=[0])
     prs.add_argument('--tfpath', help='.tfrecord dataset path', nargs='?',
                      default='./data/dataset/nsynth-train.tfrecord')
     prs.add_argument('--ckptpath', help='checkpoint path', nargs='?',
@@ -233,7 +240,8 @@ def main():
 
     figdir = crt_t_fol(args.figdir)
     showoff = ShowOff(args.tfpath, args.ckptpath, figdir, args.layers, args.length, args.sr)
-    showoff.run(args.ins, args.nb_exs, args.nb_channels, args.dspl, args.output_file, args.ens, args.cmt)
+    showoff.run(args.ins, args.source, args.qualities, args.nb_exs, args.nb_channels, args.dspl, args.output_file,
+                args.ens, args.cmt)
 
 
 if __name__ == '__main__':
