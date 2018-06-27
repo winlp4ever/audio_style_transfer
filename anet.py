@@ -135,6 +135,10 @@ class Net(object):
         embeds = sess.run(self.embeds,
                           feed_dict={self.graph['quantized_input']: mu_law_numpy(aud)})
         embeds = np.concatenate(embeds, axis=0)
+
+        embeds -= np.mean(embeds, axis=1)
+        embeds /= np.std(embeds, axis=1)
+
         return embeds
 
     def dvd_embeds(self, sess, aud, batch_size=512):

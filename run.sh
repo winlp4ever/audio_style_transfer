@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-
 for dir in ./data/aac/*/
 do
     echo "working on dir $dir ..."
