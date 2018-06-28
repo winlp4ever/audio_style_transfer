@@ -8,6 +8,9 @@ from spectrogram import plotstft
 from rainbowgram import plotcqt
 from mdl import Cfg
 import matplotlib.pyplot as plt
+from mynmf import mynmf
+from optimal_transport import compute_permutation
+from numpy.linalg import norm, lstsq
 
 plt.switch_backend('agg')
 
@@ -45,8 +48,8 @@ def crt_t_fol(suppath, hour=False):
     return fol_n
 
 
-def gt_s_path(suppath, m2f, fname, l, b, y, r, cmt):
-    path = '{}_l{}_b{}_y'.format(fname, l, b)
+def gt_s_path(suppath, m2f, fname, l, y, r, cmt):
+    path = '{}_l{}_y'.format(fname, l)
     if m2f == 0:
         path = 'f2m_' + path
     elif m2f == 1:
@@ -123,30 +126,18 @@ class SpeechNet(object):
         saver.restore(sess, self.checkpoint_path)
 
     def get_embeds(self, sess, aud):
+        if len(aud.shape) == 1:
+            aud = np.reshape(aud, [1, self.length])
         embeds = sess.run(self.embeds,
                           feed_dict={self.graph['quantized_input']: mu_law_numpy(aud)})
         embeds = np.concatenate(embeds, axis=0)
         return embeds
 
-    def dvd_embeds(self, sess, aud, batch_size=512):
-        if len(aud.shape) == 1:
-            aud = np.reshape(aud, [1, self.length])
-
-        enc = self.get_embeds(sess, aud)
-
-        assert self.length % batch_size == 0
-        nb_batches = self.length // batch_size
-
-        pieces = np.split(enc, nb_batches, axis=1)
-        mean = np.mean(pieces, axis=0)
-
-        return mean
-
-    def cpt_differ(self, sess, male2female, batch_size, nb_exs):
+    def cpt_differ(self, sess, male2female, nb_exs):
         it = self.data.make_one_shot_iterator()
         id, aud = it.get_next()
 
-        I_m, I_f = 0, 0
+        I_m, I_f = [], []
 
         try:
             i, j, k = 0, 0, 0
@@ -156,13 +147,13 @@ class SpeechNet(object):
                 aud_ = aud_[:self.length]
 
                 if id_ in MALE and j < nb_exs:
-                    m_s = self.dvd_embeds(sess, aud_, batch_size)
-                    I_m = (j * I_m + m_s) / (j + 1)
+                    m_s = self.get_embeds(sess, aud_)
+                    I_m.append(m_s)
                     j += 1
 
                 elif id_ in FEMALE and k < nb_exs:
-                    m_t = self.dvd_embeds(sess, aud_, batch_size)
-                    I_f = (k * I_f + m_t) / (k + 1)
+                    m_t = self.get_embeds(sess, aud_)
+                    I_f.append(m_t)
                     k += 1
 
                 elif j == nb_exs and k == nb_exs:
@@ -174,15 +165,33 @@ class SpeechNet(object):
         except tf.errors.OutOfRangeError:
             pass
 
-        w = I_f - I_m if male2female else I_m - I_f
+        # ============================== NMF ==============================
+        n_components = 60
 
-        return w
+        f = lambda u: (np.concatenate(u, axis=1))[0].T
+        if male2female:
+            phi_s, phi_t = f(I_m), f(I_f)
+        else:
+            phi_s, phi_t = f(I_f), f(I_m)
+
+        tf.logging.info(' begin nmf ...')
+
+        ws, hs = mynmf(phi_s, n_components, epochs=1000)
+        wt, ht = mynmf(phi_t, n_components, epochs=1000)
+
+        return ws, wt
 
     @staticmethod
-    def transform(enc, w, length, batch_size):
-        a = [w for _ in range(length // batch_size)]
-        a = np.concatenate(a, axis=1)
-        return enc + a
+    def transform(enc, ws, wt):
+        enc = enc[0].T
+        h_, _, _, _ = lstsq(ws, enc, rcond=None)
+
+        wt = compute_permutation(ws, wt)
+
+        tf.logging.info(' Error for ws * h_ = enc: {}'.format(norm(enc - np.matmul(ws, h_)) / norm(enc)))
+
+        u = np.matmul(wt, h_)
+        return np.expand_dims(u.transpose(), axis=0)
 
     @staticmethod
     def vis_actis(aud, enc, fig_dir, ep, layers, nb_channels=5, dspl=256):
@@ -244,9 +253,9 @@ class SpeechNet(object):
                 self.vis_actis(audio[0], enc, self.fig_dir, ep, self.layers)
 
             sp = os.path.join(self.spath, 'ep-{}.wav'.format(ep))
-            librosa.output.write_wav(sp, audio[0], sr=self.sr)
+            librosa.output.write_wav(sp, audio[0]/ np.max(audio[0]), sr=self.sr)
 
-    def run(self, m2f, epochs, lambd, batch_size, nb_exs):
+    def run(self, m2f, epochs, lambd, nb_exs):
         assert 0 <= m2f <= 2
 
         session_config = tf.ConfigProto(allow_soft_placement=True)
@@ -261,8 +270,8 @@ class SpeechNet(object):
 
             tf.logging.info('\nEnc shape: {}\n'.format(encodings.shape))
             if m2f < 2:
-                w = self.cpt_differ(sess, m2f, batch_size, nb_exs)
-                encodings = self.transform(encodings, w, self.length, batch_size)
+                ws, wt = self.cpt_differ(sess, m2f, nb_exs)
+                encodings = self.transform(encodings, ws, wt)
 
             self.l_bfgs(sess, encodings, epochs, lambd)
 
@@ -309,11 +318,11 @@ def main():
 
     args = prs.parse_args()
 
-    m2f, fn, l, b, y, r, cmt, e = args.male2female, args.filename, args.lambd, \
-                                   args.batch_size, args.layers, args.src_name, args.cmt, args.epochs
+    m2f, fn, l, y, r, cmt, e = args.male2female, args.filename, args.lambd, \
+                                   args.layers, args.src_name, args.cmt, args.epochs
 
     savepath = crt_t_fol(args.out_dir)
-    savepath = gt_s_path(savepath, m2f, fn, l, b, y, r, cmt)
+    savepath = gt_s_path(savepath, m2f, fn, l, y, r, cmt)
 
     filepath = os.path.join(args.src_dir, fn + '.wav')
 
@@ -323,13 +332,13 @@ def main():
         src_path = None
 
     logdir = crt_t_fol(args.logdir)
-    logdir = gt_s_path(logdir, m2f, fn, l, b, y, r, cmt)
+    logdir = gt_s_path(logdir, m2f, fn, l, y, r, cmt)
     plotpath = crt_t_fol(args.fig_dir)
-    plotpath = gt_s_path(plotpath, m2f, fn, l, b, y, r, cmt)
+    plotpath = gt_s_path(plotpath, m2f, fn, l, y, r, cmt)
 
     net = SpeechNet(filepath, src_path, savepath, plotpath, args.tfpath, args.ckpt_path, logdir, args.layers, args.sr,
                     args.length)
-    net.run(m2f, e, l, b, args.nb_exs)
+    net.run(m2f, e, l, args.nb_exs)
 
     # save spec and cqt figs
     plotstft(os.path.join(savepath, 'ep-{}.wav'.format(e - 1)), plotpath=os.path.join(plotpath, 'spec.png'))

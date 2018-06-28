@@ -5,8 +5,7 @@ from sklearn.decomposition import NMF
 
 import tensorflow as tf
 
-u = tf.constant(3.)
-
+u = tf.constant(np.array([-1, 2]))
+v = tf.abs(u)
 with tf.Session() as sess:
-    with tf.Session() as sess_:
-        print(sess.run(u))
+    print(sess.run(v))

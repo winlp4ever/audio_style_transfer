@@ -4,6 +4,7 @@ import time
 from numpy.linalg import norm
 
 from sklearn.decomposition import NMF
+from mynmf import mynmf
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -13,10 +14,9 @@ class MyNMF(object):
         f, t = size_in
 
         with tf.device("/gpu:0"):
-            tf.reset_default_graph()
-            mat = tf.placeholder(tf.float32, shape=size_in, name='mat')
-            W = tf.Variable(tf.random_uniform([f, n_components], minval=0., maxval=1.), dtype=tf.float32, name='W')
-            H = tf.Variable(tf.random_uniform([n_components, t], minval=0., maxval=1.), dtype=tf.float32, name='H')
+            mat = tf.placeholder('float', shape=size_in, name='mat')
+            W = tf.Variable(tf.random_normal([f, n_components]), name='W')
+            H = tf.Variable(tf.random_normal([n_components, t]), name='H')
 
             clip_W = W.assign(tf.maximum(tf.zeros_like(W), W))
             clip_H = H.assign(tf.maximum(tf.zeros_like(H), H))
@@ -26,12 +26,12 @@ class MyNMF(object):
                 xent = tf.norm(mat - tf.matmul(W, H))
                 tf.summary.scalar('nmf_loss', xent)
 
-
             with tf.name_scope('optim'):
                 optimizer = tf.contrib.opt.ScipyOptimizerInterface(
                     xent,
                     method='L-BFGS-B',
-                    options={'maxiter': 100})
+                    options={'maxiter': 100},
+                    )
 
             self.learning_rate = learning_rate
             self.size_in = size_in
@@ -43,6 +43,8 @@ class MyNMF(object):
                       'clip': clip}
 
     def fit_transform(self, X, epochs):
+        tf.logging.info(' Factorizing via solving argmin ||X - WH||_fro^2 ...')
+
         session_config = tf.ConfigProto(allow_soft_placement=True)
         session_config.gpu_options.allow_growth = True
         with tf.Session(config=session_config) as sess:
@@ -57,11 +59,13 @@ class MyNMF(object):
             sess.run(tf.global_variables_initializer())
 
             for _ in range(epochs):
+                since = time.time()
                 self.graph['optim'].minimize(sess,
                                              loss_callback=loss_tracking,
                                              fetches=[self.graph['loss']],
                                              feed_dict={self.graph['mat_in']: X})
                 sess.run(self.graph['clip'])
+                tf.logging.info(' Time-lapse: {}'.format(time.time() - since))
 
             tf.logging.info(' FINAL LOSS: {}'.format(sess.run(self.graph['loss'],
                                                               feed_dict={self.graph['mat_in']: X})))

@@ -113,11 +113,11 @@ class ShowOff(object):
         axs[0, 0].axis('off')
         axs[0, 2].axis('off')
         for i in range(nb_layers):
-            axs[i + 1, 0].plot(enc[i, :dspl, :nb_channels])
+            axs[i + 1, 0].plot(enc[i, 4096 :dspl + 4096, :nb_channels])
             axs[i + 1, 0].set_title('Embeds layer {} part 0'.format(layer_ids[i]))
-            axs[i + 1, 1].plot(enc[i, dspl:2 * dspl, :nb_channels])
+            axs[i + 1, 1].plot(enc[i, dspl + 4096:2 * dspl + 4096, :nb_channels])
             axs[i + 1, 1].set_title('Embeds layer {} part 1'.format(layer_ids[i]))
-            axs[i + 1, 2].plot(enc[i, 2 * dspl:3 * dspl, :nb_channels])
+            axs[i + 1, 2].plot(enc[i, 2 * dspl + 4096:3 * dspl + 4096, :nb_channels])
             axs[i + 1, 2].set_title('Embeds layer {} part 2'.format(layer_ids[i]))
 
         sp = os.path.join(fig_dir, 'f-{}'.format(ep))
@@ -176,9 +176,9 @@ class ShowOff(object):
 
                     if tpe == id_ and src_ == ins_src and (qua_[qualities] == 1).all():
                         i += 1
-                        # aud_ = librosa.effects.pitch_shift(aud_, sr=self.sr, n_steps=-5.)
-                        # a = np.zeros((64000,))
-                        # a[512 : ] = aud_[:-512]
+                        #a = np.zeros((64000,))
+                        #a[4096 : ] = aud_[:-4096]
+                        #aud_=a
                         actis = sess.run(layers, feed_dict={
                             aud: aud_
                         })
@@ -211,7 +211,7 @@ def main():
     prs.add_argument('ins', help='instrument family')
     prs.add_argument('--source', '--instrument_source', help='instrument source', type=int,
                      nargs='?', default=0)
-    prs.add_argument('--qualities', help='note qualities', type=int, nargs='*', action=DefaultList, default=[0])
+    prs.add_argument('--qualities', help='note qualities', type=int, nargs='*', action=DefaultList, default=[1])
     prs.add_argument('--tfpath', help='.tfrecord dataset path', nargs='?',
                      default='./data/dataset/nsynth-train.tfrecord')
     prs.add_argument('--ckptpath', help='checkpoint path', nargs='?',

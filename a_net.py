@@ -8,9 +8,12 @@ from spectrogram import plotstft
 from rainbowgram import plotcqt
 from mdl import Cfg
 import matplotlib.pyplot as plt
-from sklearn.decomposition import NMF
+from sklearn.decomposition.nmf import non_negative_factorization
 from numpy.linalg import norm, lstsq
 from optimal_transport import compute_permutation
+from my_nmf import MyNMF
+from mynmf import mynmf
+from scipy.optimize import nnls
 
 plt.switch_backend('agg')
 
@@ -144,7 +147,7 @@ class Net(object):
 
         return embeds
 
-    def cpt_differ(self, sess, type_s, type_t, nb_exs):
+    def cpt_differ(self, sess, type_s, type_t, qualities, nb_exs):
         it = self.data.make_one_shot_iterator()
         id, src, qua, aud = it.get_next()
 
@@ -157,12 +160,12 @@ class Net(object):
                 id_, src_, qua_, aud_ = sess.run([id, src, qua, aud])
                 aud_ = aud_[:self.length]
 
-                if id_ == type_s and src_ == 0 and qua_[[1]] == 1 and j < nb_exs:
+                if id_ == type_s and src_ == 0 and (qua_[qualities] == 1).all() and j < nb_exs:
                     m_s = self.get_embeds(sess, aud_)
                     I_s.append(m_s)
                     j += 1
 
-                elif id_ == type_t and src_ == 0 and qua_[[0]] == 1 and k < nb_exs:
+                elif id_ == type_t and src_ == 0 and (qua_[qualities] == 1).all() and k < nb_exs:
                     m_t = self.get_embeds(sess, aud_)
                     I_t.append(m_t)
                     k += 1
@@ -177,37 +180,29 @@ class Net(object):
             pass
 
         #============================== NMF ==============================
-        n_components = 40
+        n_components = 60
 
         f = lambda u : (np.concatenate(u, axis=1))[0].T
         phi_s, phi_t = f(I_s), f(I_t)
 
         tf.logging.info(' begin nmf ...')
-        nmf = NMF(n_components=n_components, init='random', random_state=0, max_iter=400, solver='mu')
 
-        since_s = time.time()
-        ws, hs = nmf.fit_transform(phi_s), nmf.components_
-        tf.logging.info(' done for s. Time-lapse: {} \n Error: {}'.
-                        format(time.time() - since_s, norm(phi_s - np.matmul(ws, hs)) / norm(phi_s)))
-
-        since_t = time.time()
-        wt, ht = nmf.fit_transform(phi_t), nmf.components_
-        tf.logging.info(' done for t. Time-lapse: {} \n Error: {}'.
-                        format(time.time() - since_t, norm(phi_t - np.matmul(wt, ht)) / norm(phi_t)))
+        ws, hs = mynmf(phi_s, n_components=n_components, epochs=1000)
+        wt, ht = mynmf(phi_t, n_components=n_components, epochs=1000)
 
         return ws, wt
 
     @staticmethod
     def transform(enc, ws, wt):
-        enc = enc[0].T
-        h_, _, _, _ = lstsq(ws, enc, rcond=None)
-
+        enc = enc[0]
+        hT, _, _ = non_negative_factorization(enc, n_components=60, H=ws.T, update_H=False,
+                                        solver='mu', max_iter=400, verbose=1)
         wt = compute_permutation(ws, wt)
 
-        tf.logging.info(' Error for ws * h_ = enc: {}'.format(norm(enc - np.matmul(ws, h_)) / norm(enc)))
+        u = np.matmul(hT, ws.T)
+        tf.logging.info(' Error for ws * h_ = enc: {}'.format(norm(enc - u) / norm(enc)))
 
-        u = np.matmul(wt, h_)
-        return np.expand_dims(u.transpose(), axis=0)
+        return np.expand_dims(np.matmul(hT, wt.T), axis=0)
 
     @staticmethod
     def vis_actis(aud, enc, fig_dir, ep, layers, nb_channels=5, dspl=256):
@@ -287,7 +282,7 @@ class Net(object):
 
         return np.reshape(u, [1, -1, 128])
 
-    def run(self, type_s, type_t, epochs, lambd, nb_exs):
+    def run(self, type_s, type_t, qualities, epochs, lambd, nb_exs):
         session_config = tf.ConfigProto(allow_soft_placement=True)
         session_config.gpu_options.allow_growth = True
 
@@ -300,7 +295,7 @@ class Net(object):
 
             tf.logging.info('\nEnc shape: {}\n'.format(encodings.shape))
             if type_s != type_t:
-                ws, wt = self.cpt_differ(sess, type_s, type_t, nb_exs)
+                ws, wt = self.cpt_differ(sess, type_s, type_t, qualities, nb_exs)
                 encodings = self.transform(encodings, ws, wt)
             else:
                 encodings = self.regen_embeds(encodings)
@@ -322,6 +317,9 @@ def main():
     prs.add_argument('s', help='source type', type=int)
     prs.add_argument('t', help='target type', type=int)
 
+
+    prs.add_argument('--qualities', help='music note qualities', nargs='*', action=DefaultList,
+                     default=[1])
     prs.add_argument('--src_dir', help='dir where found files to be style-transferred',
                      nargs='?', default='./data/src')
     prs.add_argument('--src_name', help='relative path of source file to initiate with, if None the optim'
@@ -371,7 +369,7 @@ def main():
 
     net = Net(filepath, src_path, savepath, plotpath, args.tfpath, args.ckpt_path, logdir, args.layers, args.sr,
               args.length)
-    net.run(s, t, e, l, args.nb_exs)
+    net.run(s, t, args.qualities, e, l, args.nb_exs)
 
     # save spec and cqt figs
     plotstft(os.path.join(savepath, 'ep-{}.wav'.format(e - 1)), plotpath=os.path.join(plotpath, 'spec.png'))
