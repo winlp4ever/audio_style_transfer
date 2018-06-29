@@ -1,11 +1,15 @@
-import numpy as np
-from numpy.linalg import norm
-import time
-from sklearn.decomposition import NMF
-
 import tensorflow as tf
+import numpy as np
 
-u = tf.constant(np.array([-1, 2]))
-v = tf.abs(u)
-with tf.Session() as sess:
-    print(sess.run(v))
+a = np.random.sample([50, 60])
+b = np.random.sample([50, 60])
+
+import matplotlib.pyplot as plt
+
+figs, axs = plt.subplots(1, 2, figsize=(20, 5))
+axs[0].set_aspect('equal')
+axs[0].imshow(a, interpolation='nearest', cmap=plt.cm.ocean)
+axs[1].set_aspect('equal')
+axs[1].imshow(b, interpolation='nearest', cmap=plt.cm.ocean)
+#plt.colorbar()
+plt.show()

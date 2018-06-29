@@ -1,7 +1,10 @@
-import tensorflow as tf
 import numpy as np
 import librosa
 import os
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+import tensorflow as tf
+
 import time
 import argparse
 from spectrogram import plotstft
@@ -11,25 +14,12 @@ import matplotlib.pyplot as plt
 from sklearn.decomposition.nmf import non_negative_factorization
 from numpy.linalg import norm, lstsq
 from optimal_transport import compute_permutation
-from my_nmf import MyNMF
 from mynmf import mynmf
-from scipy.optimize import nnls
+import use
 
 plt.switch_backend('agg')
 
 tf.logging.set_verbosity(tf.logging.INFO)
-
-INS = ['bass',
-       'brass',
-       'flute',
-       'guitar',
-       'keyboard',
-       'mallet',
-       'organ',
-       'reed',
-       'string',
-       'synth_lead',
-       'vocal']
 
 
 def decode(serialized_example):
@@ -47,49 +37,6 @@ def decode(serialized_example):
     )
 
     return ex['instrument_family'], ex['instrument_source'], ex['qualities'], ex['audio']
-
-
-def crt_t_fol(suppath, hour=False):
-    dte = time.localtime()
-    if hour:
-        fol_n = os.path.join(suppath, '{}{}{}{}'.format(dte[1], dte[2], dte[3], dte[4]))
-    else:
-        fol_n = os.path.join(suppath, '{}{}'.format(dte[1], dte[2]))
-
-    if not os.path.exists(fol_n):
-        os.makedirs(fol_n)
-    return fol_n
-
-
-def gt_s_path(suppath, s, t, fname, l, y, r, cmt):
-    if s != t:
-        path = '{}2{}_{}_l{}_y'.format(INS[s], INS[t], fname, l)
-    else:
-        path = '{}_l{}_y'.format(fname, l)
-    for i in y:
-        path += str(i)
-    if r:
-        path += '_fr{}'.format(r)
-    if cmt:
-        path += '_{}'.format(cmt)
-    path = os.path.join(suppath, path)
-    if not os.path.exists(path):
-        os.makedirs(path)
-    return path
-
-
-def mu_law_numpy(x, mu=255):
-    out = np.sign(x) * np.log(1 + mu * np.abs(x)) / np.log(1 + mu)
-    out = np.floor(out * 128)
-    return out
-
-
-def inv_mu_law_numpy(x, mu=255.0):
-    x = np.array(x).astype(np.float32)
-    out = (x + 0.5) * 2. / (mu + 1)
-    out = np.sign(out) / mu * ((1 + mu) ** np.abs(out) - 1)
-    out = np.where(np.equal(x, 0), x, out)
-    return out
 
 
 class Net(object):
@@ -118,7 +65,7 @@ class Net(object):
         config = Cfg()
         with tf.device("/gpu:0"):
             x = tf.Variable(
-                initial_value=(mu_law_numpy(src) if src is not None
+                initial_value=(use.mu_law_numpy(src) if src is not None
                                else np.zeros([1, length])),
                 trainable=True,
                 name='regenerated_wav'
@@ -142,12 +89,12 @@ class Net(object):
             aud = np.reshape(aud, [1, -1])
 
         embeds = sess.run(self.embeds,
-                          feed_dict={self.graph['quantized_input']: mu_law_numpy(aud)})
+                          feed_dict={self.graph['quantized_input']: use.mu_law_numpy(aud)})
         embeds = np.concatenate(embeds, axis=0)
 
         return embeds
 
-    def cpt_differ(self, sess, type_s, type_t, qualities, nb_exs):
+    def cpt_differ(self, sess, type_s, type_t, qualities, examples, n_components):
         it = self.data.make_one_shot_iterator()
         id, src, qua, aud = it.get_next()
 
@@ -160,66 +107,36 @@ class Net(object):
                 id_, src_, qua_, aud_ = sess.run([id, src, qua, aud])
                 aud_ = aud_[:self.length]
 
-                if id_ == type_s and src_ == 0 and (qua_[qualities] == 1).all() and j < nb_exs:
+                if id_ == type_s and src_ == 0 and (qua_[qualities] == 1).all() and j < examples:
                     m_s = self.get_embeds(sess, aud_)
                     I_s.append(m_s)
                     j += 1
 
-                elif id_ == type_t and src_ == 0 and (qua_[qualities] == 1).all() and k < nb_exs:
+                elif id_ == type_t and src_ == 0 and (qua_[qualities] == 1).all() and k < examples:
                     m_t = self.get_embeds(sess, aud_)
                     I_t.append(m_t)
                     k += 1
 
-                elif j == nb_exs and k == nb_exs:
+                elif j == examples and k == examples:
                     break
 
-                tf.logging.info(' SRC: {} - size {} -- TRG: {} - size {} -- iter {}'.
-                                format(INS[type_s], j, INS[type_t], k, i))
+                print(' SRC: {} - size {} -- TRG: {} - size {} -- iter {}'.
+                      format(use.ins[type_s], j, use.ins[type_t], k, i), end='\r', flush=True)
 
         except tf.errors.OutOfRangeError:
             pass
 
-        #============================== NMF ==============================
-        n_components = 60
-
-        f = lambda u : (np.concatenate(u, axis=1))[0].T
+        # ============================== NMF ==============================
+        f = lambda u: (np.concatenate(u, axis=1))[0].T
         phi_s, phi_t = f(I_s), f(I_t)
 
-        tf.logging.info(' begin nmf ...')
+        tf.logging.info('\n begin nmf ...')
 
         ws, hs = mynmf(phi_s, n_components=n_components, epochs=1000)
         wt, ht = mynmf(phi_t, n_components=n_components, epochs=1000)
 
         return ws, wt
 
-    @staticmethod
-    def transform(enc, ws, wt):
-        enc = enc[0]
-        hT, _, _ = non_negative_factorization(enc, n_components=60, H=ws.T, update_H=False,
-                                        solver='mu', max_iter=400, verbose=1)
-        wt = compute_permutation(ws, wt)
-
-        u = np.matmul(hT, ws.T)
-        tf.logging.info(' Error for ws * h_ = enc: {}'.format(norm(enc - u) / norm(enc)))
-
-        return np.expand_dims(np.matmul(hT, wt.T), axis=0)
-
-    @staticmethod
-    def vis_actis(aud, enc, fig_dir, ep, layers, nb_channels=5, dspl=256):
-        nb_layers = enc.shape[0]
-        fig, axs = plt.subplots(nb_layers + 1, 3, figsize=(30, 5 * (nb_layers + 1)))
-        axs[0, 1].plot(aud)
-        axs[0, 1].set_title('Audio Signal')
-        axs[0, 0].axis('off')
-        axs[0, 2].axis('off')
-        for i in range(nb_layers):
-            axs[i + 1, 0].plot(enc[i, :dspl, :nb_channels])
-            axs[i + 1, 0].set_title('Embeds layer {} part 0'.format(layers[i]))
-            axs[i + 1, 1].plot(enc[i, dspl:2 * dspl, :nb_channels])
-            axs[i + 1, 1].set_title('Embeds layer {} part 1'.format(layers[i]))
-            axs[i + 1, 2].plot(enc[i, 2 * dspl:3 * dspl, :nb_channels])
-            axs[i + 1, 2].set_title('Embeds layer {} part 2'.format(layers[i]))
-        plt.savefig(os.path.join(fig_dir, 'f-{}.png'.format(ep)), dpi=50)
 
     def l_bfgs(self, sess, encodings, epochs, lambd):
         writer = tf.summary.FileWriter(logdir=self.logdir)
@@ -237,7 +154,7 @@ class Net(object):
         def loss_tracking(loss_, summ_):
             nonlocal i
             if not i % 5:
-                tf.logging.info(' Step: {} -- Loss: {}'.format(i, loss_))
+                print(' Step: {} -- Loss: {}'.format(i, loss_), end='\r', flush=True)
             writer.add_summary(summ_, global_step=i)
             i += 1
 
@@ -256,12 +173,12 @@ class Net(object):
                             format(self.spath, ep, epochs - 1, int(time.time() - since)))
 
             audio = sess.run(self.graph['quantized_input'])
-            audio = inv_mu_law_numpy(audio)
+            audio = use.inv_mu_law_numpy(audio)
 
             if not (ep + 1) % 10:
                 tf.logging.info(' visualize actis ...')
                 enc = self.get_embeds(sess, audio)
-                self.vis_actis(audio[0], enc, self.fig_dir, ep, self.layers)
+                use.vis_actis(audio[0], enc, self.fig_dir, ep, self.layers)
 
             sp = os.path.join(self.spath, 'ep-{}.wav'.format(ep))
             librosa.output.write_wav(sp, audio[0] / np.max(audio[0]), sr=self.sr)
@@ -282,7 +199,7 @@ class Net(object):
 
         return np.reshape(u, [1, -1, 128])
 
-    def run(self, type_s, type_t, qualities, epochs, lambd, nb_exs):
+    def run(self, ins_families, qualities, epochs, lambd, examples, n_components):
         session_config = tf.ConfigProto(allow_soft_placement=True)
         session_config.gpu_options.allow_growth = True
 
@@ -294,9 +211,11 @@ class Net(object):
             encodings = self.get_embeds(sess, self.wav)
 
             tf.logging.info('\nEnc shape: {}\n'.format(encodings.shape))
-            if type_s != type_t:
-                ws, wt = self.cpt_differ(sess, type_s, type_t, qualities, nb_exs)
-                encodings = self.transform(encodings, ws, wt)
+            if ins_families is not None:
+                assert len(ins_families) == 2
+                type_s, type_t = ins_families
+                ws, wt = self.cpt_differ(sess, type_s, type_t, qualities, examples, n_components)
+                encodings = use.transform(encodings, ws, wt, n_components)
             else:
                 encodings = self.regen_embeds(encodings)
 
@@ -314,12 +233,10 @@ def main():
     prs = argparse.ArgumentParser()
 
     prs.add_argument('filename', help='relative filename to transfer style.')
-    prs.add_argument('s', help='source type', type=int)
-    prs.add_argument('t', help='target type', type=int)
-
-
+    prs.add_argument('--ins', help='source and target instrument families', nargs='*', type=int)
     prs.add_argument('--qualities', help='music note qualities', nargs='*', action=DefaultList,
-                     default=[1])
+                     default=[1], type=int)
+    prs.add_argument('--n_components', help='number of components', nargs='?', type=int, default=20)
     prs.add_argument('--src_dir', help='dir where found files to be style-transferred',
                      nargs='?', default='./data/src')
     prs.add_argument('--src_name', help='relative path of source file to initiate with, if None the optim'
@@ -330,50 +247,44 @@ def main():
 
     prs.add_argument('--fig_dir', help='where stocks figures', nargs='?', default='./data/fig')
 
-    prs.add_argument('-p', '--ckpt_path', help='checkpoint path', nargs='?',
+    prs.add_argument('--ckpt_path', help='checkpoint path', nargs='?',
                      default='./nsynth/model/wavenet-ckpt/model.ckpt-200000')
-    prs.add_argument('-t', '--tfpath', help='TFRecord Dataset s path', nargs='?',
+    prs.add_argument('--tfpath', help='TFRecord Dataset s path', nargs='?',
                      default='./data/dataset/nsynth-train.tfrecord',
                      const='./data/dataset/nsynth-valid.tfrecord')
     prs.add_argument('--logdir', help='logging directory', nargs='?',
                      default='./log')
-    prs.add_argument('-e', '--epochs', help='number of epochs', nargs='?', type=int, default=10)
-    prs.add_argument('-l', '--lambd', help='lambda value', nargs='?', type=float, default=0.0)
+    prs.add_argument('--epochs', help='number of epochs', nargs='?', type=int, default=10)
+    prs.add_argument('--lambd', help='lambda value', nargs='?', type=float, default=0.0)
     prs.add_argument('--length', help='duration of wav file -- unit: nb of samples', nargs='?',
                      type=int, default=16384)
     prs.add_argument('--sr', help='sampling rate', nargs='?', type=int, default=16000)
-    prs.add_argument('--nb_exs', help='number examples', nargs='?', type=int, default=1000)
+    prs.add_argument('--examples', help='number examples', nargs='?', type=int, default=1000)
     prs.add_argument('--layers', help='list of layer enums for embeddings', nargs='*',
                      type=int, action=DefaultList, default=[30])
     prs.add_argument('--cmt', help='comment')
 
     args = prs.parse_args()
 
-    s, t, fn, l, y, r, cmt, e = args.s, args.t, args.filename, args.lambd, \
-                                   args.layers, args.src_name, args.cmt, args.epochs
+    crt_path = lambda dir: use.gt_s_path(use.crt_t_fol(dir), **vars(args))
+    savepath = crt_path(args.out_dir)
+    logdir = crt_path(args.logdir)
+    plotpath = crt_path(args.fig_dir)
 
-    savepath = crt_t_fol(args.out_dir)
-    savepath = gt_s_path(savepath, s, t, fn, l, y, r, cmt)
-
-    filepath = os.path.join(args.src_dir, fn + '.wav')
+    filepath = os.path.join(args.src_dir, args.filename + '.wav')
 
     if args.src_name:
         src_path = os.path.join(args.src_dir, args.src_name + '.wav')
     else:
         src_path = None
 
-    logdir = crt_t_fol(args.logdir)
-    logdir = gt_s_path(logdir, s, t, fn, l, y, r, cmt)
-    plotpath = crt_t_fol(args.fig_dir)
-    plotpath = gt_s_path(plotpath, s, t, fn, l, y, r, cmt)
-
     net = Net(filepath, src_path, savepath, plotpath, args.tfpath, args.ckpt_path, logdir, args.layers, args.sr,
               args.length)
-    net.run(s, t, args.qualities, e, l, args.nb_exs)
+    net.run(args.ins, args.qualities, args.epochs, args.lambd, args.examples, args.n_components)
 
     # save spec and cqt figs
-    plotstft(os.path.join(savepath, 'ep-{}.wav'.format(e - 1)), plotpath=os.path.join(plotpath, 'spec.png'))
-    plotcqt(os.path.join(savepath, 'ep-{}.wav'.format(e - 1)), savepath=os.path.join(plotpath, 'cqt.png'))
+    plotstft(os.path.join(savepath, 'ep-{}.wav'.format(args.epochs - 1)), plotpath=os.path.join(plotpath, 'spec.png'))
+    plotcqt(os.path.join(savepath, 'ep-{}.wav'.format(args.epochs - 1)), savepath=os.path.join(plotpath, 'cqt.png'))
 
 
 if __name__ == '__main__':

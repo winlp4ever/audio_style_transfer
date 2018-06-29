@@ -1,12 +1,14 @@
-import tensorflow as tf
 from mdl import Cfg
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+import tensorflow as tf
 import librosa
 import argparse
 import time
 from spectrogram import plotstft
+import use
 
 plt.switch_backend('agg')
 
@@ -15,18 +17,6 @@ tf.logging.set_verbosity(tf.logging.INFO)
 ACOUSTIC = 0
 ELECTRONIC = 1
 SYNTHETIC = 2
-
-
-def crt_t_fol(suppath, hour=False):
-    dte = time.localtime()
-    if hour:
-        fol_n = os.path.join(suppath, '{}{}{}{}'.format(dte[1], dte[2], dte[3], dte[4]))
-    else:
-        fol_n = os.path.join(suppath, '{}{}'.format(dte[1], dte[2]))
-
-    if not os.path.exists(fol_n):
-        os.makedirs(fol_n)
-    return fol_n
 
 
 def gt_spath(suppath, ins_type, layers_ids, cmt=None):
@@ -104,57 +94,7 @@ class ShowOff(object):
         saver = tf.train.Saver(var_list=variables)
         saver.restore(sess, self.checkpoint_path)
 
-    @staticmethod
-    def vis_actis(aud, enc, fig_dir, ep, layer_ids, nb_channels=5, dspl=256, output_file=False):
-        nb_layers = enc.shape[0]
-        fig, axs = plt.subplots(nb_layers + 1, 3, figsize=(30, 5 * (nb_layers + 1)))
-        axs[0, 1].plot(aud)
-        axs[0, 1].set_title('Audio Signal')
-        axs[0, 0].axis('off')
-        axs[0, 2].axis('off')
-        for i in range(nb_layers):
-            axs[i + 1, 0].plot(enc[i, 4096 :dspl + 4096, :nb_channels])
-            axs[i + 1, 0].set_title('Embeds layer {} part 0'.format(layer_ids[i]))
-            axs[i + 1, 1].plot(enc[i, dspl + 4096:2 * dspl + 4096, :nb_channels])
-            axs[i + 1, 1].set_title('Embeds layer {} part 1'.format(layer_ids[i]))
-            axs[i + 1, 2].plot(enc[i, 2 * dspl + 4096:3 * dspl + 4096, :nb_channels])
-            axs[i + 1, 2].set_title('Embeds layer {} part 2'.format(layer_ids[i]))
-
-        sp = os.path.join(fig_dir, 'f-{}'.format(ep))
-        plt.savefig(sp + '.png', dpi=50)
-        if output_file:
-            librosa.output.write_wav(sp + '.wav', aud, sr=16000)
-
-    @staticmethod
-    def vis_actis_ens(aud, enc, fig_dir, ep, layer_ids, nb_channels=5, dspl=256, output_file=False):
-        nb_layers = enc.shape[0]
-        fig, axs = plt.subplots(nb_layers + 1, 3, figsize=(30, 5 * (nb_layers + 1)))
-        axs[0, 1].plot(aud)
-        axs[0, 1].set_title('Audio Signal')
-        axs[0, 0].axis('off')
-        axs[0, 2].axis('off')
-
-        for i in range(nb_layers):
-            a = np.reshape(enc[i, :, :nb_channels], [-1, dspl, nb_channels])
-            std = np.std(a, axis=1)
-            mean = np.mean(a, axis=1)
-            min = np.std(a, axis=1)
-            max = np.std(a, axis=1)
-            axs[i + 1, 0].plot(min)
-            axs[i + 1, 0].plot(max)
-            axs[i + 1, 0].set_title('embeds layer {} -- MIN/MAX'.format(layer_ids[i]))
-            axs[i + 1, 1].plot(std + mean)
-            axs[i + 1, 1].plot(-std + mean)
-            axs[i + 1, 1].set_title('embeds layer {} -- STD/MEAN'.format(layer_ids[i]))
-            axs[i + 1, 2].plot(mean)
-            axs[i + 1, 2].set_title('embeds layer {} -- AVG'.format(layer_ids[i]))
-
-        sp = os.path.join(fig_dir, 'fe-{}'.format(ep))
-        plt.savefig(sp + '.png', dpi=50)
-        if output_file:
-            librosa.output.write_wav(sp + '.wav', aud, sr=16000)
-
-    def run(self, ins_type, ins_src, qualities, nb_exs, nb_channels, dspl, output_file, ens, cmt):
+    def run(self, ins_type, ins_src, qualities, examples, nb_channels, dspl, output_file, ens, cmt):
         assert 0 <= ins_src <= 2
 
         tpe = self.ins_fam[ins_type]
@@ -171,7 +111,7 @@ class ShowOff(object):
             try:
                 j = 0
                 i = 0
-                while i < nb_exs:
+                while i < examples:
                     id_, src_, qua_, aud_ = sess.run([id, src, qua, aud])
 
                     if tpe == id_ and src_ == ins_src and (qua_[qualities] == 1).all():
@@ -186,11 +126,11 @@ class ShowOff(object):
                         actis = np.concatenate(actis, axis=0)
                         assert (actis >= 0).all()
                         if ens:
-                            self.vis_actis_ens(aud_, actis, figdir, i, self.layer_ids, nb_channels, dspl, output_file)
+                            use.vis_actis_ens(aud_, actis, figdir, i, self.layer_ids, nb_channels, dspl, output_file)
                         else:
-                            self.vis_actis(aud_, actis, figdir, i, self.layer_ids, nb_channels, dspl, output_file)
+                            use.vis_actis(aud_, actis, figdir, i, self.layer_ids, nb_channels, dspl, output_file)
 
-                    tf.logging.info('example {} -- iter {}'.format(i, j))
+                    print('example {} -- iter {}'.format(i, j), end='\r', flush=True)
                     j += 1
 
             except tf.errors.OutOfRangeError:
@@ -224,12 +164,12 @@ def main():
                      nargs='?', default=16384)
     prs.add_argument('--sr', '--samplingrate', help='sampling rate', type=int,
                      nargs='?', default=16000)
-    prs.add_argument('--nb_exs', help='nb of examples', type=int,
+    prs.add_argument('--examples', help='nb of examples', type=int,
                      nargs='?', default=100)
     prs.add_argument('--nb_channels', help='nb of first channels to be taken for each layer',
                      type=int, nargs='?', default=5)
     prs.add_argument('--dspl', '--downsampling-rate', help='downsampling rate', type=int,
-                     nargs='?', default=256)
+                     nargs='?', default=64)
     prs.add_argument('--layers', help='layer ids', nargs='*', type=int, action=DefaultList,
                      default=[4, 9, 14, 19, 24, 29])
     prs.add_argument('--ens', help='view entirely or only partially original input signal',
@@ -238,9 +178,9 @@ def main():
 
     args = prs.parse_args()
 
-    figdir = crt_t_fol(args.figdir)
+    figdir = use.crt_t_fol(args.figdir)
     showoff = ShowOff(args.tfpath, args.ckptpath, figdir, args.layers, args.length, args.sr)
-    showoff.run(args.ins, args.source, args.qualities, args.nb_exs, args.nb_channels, args.dspl, args.output_file,
+    showoff.run(args.ins, args.source, args.qualities, args.examples, args.nb_channels, args.dspl, args.output_file,
                 args.ens, args.cmt)
 
 
