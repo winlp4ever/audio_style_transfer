@@ -149,9 +149,13 @@ class SpeechNet(object):
         i = 0
 
         def loss_tracking(loss_, summ_):
+            nonlocal i_
             nonlocal i
+            nonlocal ep
+            nonlocal since
             if not i % 5:
-                print(' Step: {} -- Loss: {}'.format(i, loss_), end='\r', flush=True)
+                print('Epoch: {0:}/{1:} reached in {2:} (last: {3:}) iters after {4:.2f}s -- loss: {5:.5f}'.
+                      format(ep, epochs - 1, i, i_, time.time() - since, loss_), end='\r', flush=True)
             writer.add_summary(summ_, global_step=i)
             i += 1
 
@@ -163,25 +167,22 @@ class SpeechNet(object):
                 options={'maxiter': 100})
 
         print('Saving file ... to fol {{{}}}'.format(self.spath))
+        since = time.time()
+        i_ = 0
         for ep in range(epochs):
-            i_ = i
-            since = int(time.time())
+            i = 0
 
             optimizer.minimize(sess, loss_callback=loss_tracking, fetches=[loss, summ])
-            c = sess.run(loss)
-            print('Epoch: {0:}/{1:} after {2:} iters -- time-lapse: {3:.2f}s -- loss: {4:.5f}'.
-                  format(ep, epochs - 1, i - i_, int(time.time() - since), c))
-
+            i_ = i
             audio = sess.run(self.graph['quantized_input'])
             audio = use.inv_mu_law_numpy(audio)
 
             if not (ep + 1) % 10:
-                print('visualize actis ...')
                 enc = self.get_embeds(sess, audio)
                 use.vis_actis(audio[0], enc, self.fig_dir, ep, self.layers)
 
             sp = os.path.join(self.spath, 'ep-{}.wav'.format(ep))
-            librosa.output.write_wav(sp, audio[0]/ np.max(audio[0]), sr=self.sr)
+            librosa.output.write_wav(sp, audio[0] / np.max(audio[0]), sr=self.sr)
 
     def run(self, m2f, epochs, lambd, examples, n_components):
         assert 0 <= m2f <= 2
