@@ -12,7 +12,7 @@ import use
 
 plt.switch_backend('agg')
 
-tf.logging.set_verbosity(tf.logging.INFO)
+tf.logging.set_verbosity(tf.logging.WARN)
 
 ACOUSTIC = 0
 ELECTRONIC = 1
@@ -135,7 +135,6 @@ class ShowOff(object):
 
             except tf.errors.OutOfRangeError:
                 pass
-        tf.logging.info('Done')
 
 
 def main():

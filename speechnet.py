@@ -12,9 +12,9 @@ import matplotlib.pyplot as plt
 from mynmf import mynmf
 import use
 
-plt.switch_backend('agg')
+tf.logging.set_verbosity(tf.logging.WARN)
 
-tf.logging.set_verbosity(tf.logging.INFO)
+plt.switch_backend('agg')
 
 MALE = [17, 61, 81, 154, 562, 817, 866, 926, 1041, 1066, 1106, 1298, 1437,
         1509, 1541, 1593]
@@ -89,7 +89,7 @@ class SpeechNet(object):
         embeds = np.concatenate(embeds, axis=0)
         return embeds
 
-    def cpt_differ(self, sess, male2female, nb_exs, n_components):
+    def cpt_differ(self, sess, male2female, examples, n_components):
         it = self.data.make_one_shot_iterator()
         id, aud = it.get_next()
 
@@ -102,20 +102,20 @@ class SpeechNet(object):
                 id_, aud_ = sess.run([id, aud])
                 aud_ = aud_[:self.length]
 
-                if id_ in MALE and j < nb_exs:
+                if id_ in MALE and j < examples:
                     m_s = self.get_embeds(sess, aud_)
                     I_m.append(m_s)
                     j += 1
 
-                elif id_ in FEMALE and k < nb_exs:
+                elif id_ in FEMALE and k < examples:
                     m_t = self.get_embeds(sess, aud_)
                     I_f.append(m_t)
                     k += 1
 
-                elif j == nb_exs and k == nb_exs:
+                elif j == examples and k == examples:
                     break
 
-                print(' MALE - size {} -- FEMALE - size {} -- iter {}'.
+                print('MALE - size {} -- FEMALE - size {} -- iter {}'.
                                 format(j, k, i), end='\r', flush=True)
 
         except tf.errors.OutOfRangeError:
@@ -128,7 +128,7 @@ class SpeechNet(object):
         else:
             phi_s, phi_t = f(I_f), f(I_m)
 
-        tf.logging.info(' begin nmf ...')
+        print('\nbegin nmf ...')
 
         ws, hs = mynmf(phi_s, n_components=n_components, epochs=1000)
         wt, ht = mynmf(phi_t, n_components=n_components, epochs=1000)
@@ -162,25 +162,28 @@ class SpeechNet(object):
                 method='L-BFGS-B',
                 options={'maxiter': 100})
 
+        print('Saving file ... to fol {{{}}}'.format(self.spath))
         for ep in range(epochs):
+            i_ = i
             since = int(time.time())
 
             optimizer.minimize(sess, loss_callback=loss_tracking, fetches=[loss, summ])
-            tf.logging.info(' Saving file ... to fol {{{}}} \n \t Epoch: {}/{} -- Time-lapse: {}s'.
-                            format(self.spath, ep, epochs - 1, int(time.time() - since)))
+            c = sess.run(loss)
+            print('Epoch: {0:}/{1:} after {2:} iters -- time-lapse: {3:.2f}s -- loss: {4:.5f}'.
+                  format(ep, epochs - 1, i - i_, int(time.time() - since), c))
 
             audio = sess.run(self.graph['quantized_input'])
             audio = use.inv_mu_law_numpy(audio)
 
             if not (ep + 1) % 10:
-                tf.logging.info(' visualize actis ...')
+                print('visualize actis ...')
                 enc = self.get_embeds(sess, audio)
                 use.vis_actis(audio[0], enc, self.fig_dir, ep, self.layers)
 
             sp = os.path.join(self.spath, 'ep-{}.wav'.format(ep))
             librosa.output.write_wav(sp, audio[0]/ np.max(audio[0]), sr=self.sr)
 
-    def run(self, m2f, epochs, lambd, nb_exs, n_components):
+    def run(self, m2f, epochs, lambd, examples, n_components):
         assert 0 <= m2f <= 2
 
         session_config = tf.ConfigProto(allow_soft_placement=True)
@@ -193,9 +196,9 @@ class SpeechNet(object):
 
             encodings = self.get_embeds(sess, self.wav)
 
-            tf.logging.info('\nEnc shape: {}\n'.format(encodings.shape))
+            print('\nEnc shape: {}\n'.format(encodings.shape))
             if m2f < 2:
-                ws, wt = self.cpt_differ(sess, m2f, nb_exs, n_components)
+                ws, wt = self.cpt_differ(sess, m2f, examples, n_components)
                 encodings = use.transform(encodings, ws, wt, n_components, self.fig_dir)
 
             self.l_bfgs(sess, encodings, epochs, lambd)

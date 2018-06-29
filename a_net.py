@@ -1,7 +1,6 @@
 import numpy as np
 import librosa
 import os
-
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 
@@ -17,10 +16,9 @@ from optimal_transport import compute_permutation
 from mynmf import mynmf
 import use
 
+tf.logging.set_verbosity(tf.logging.WARN)
+
 plt.switch_backend('agg')
-
-tf.logging.set_verbosity(tf.logging.INFO)
-
 
 def decode(serialized_example):
     ex = tf.parse_single_example(
@@ -120,7 +118,7 @@ class Net(object):
                 elif j == examples and k == examples:
                     break
 
-                print(' SRC: {} - size {} -- TRG: {} - size {} -- iter {}'.
+                print('SRC: {} - size {} -- TRG: {} - size {} -- iter {}'.
                       format(use.ins[type_s], j, use.ins[type_t], k, i), end='\r', flush=True)
 
         except tf.errors.OutOfRangeError:
@@ -130,13 +128,12 @@ class Net(object):
         f = lambda u: (np.concatenate(u, axis=1))[0].T
         phi_s, phi_t = f(I_s), f(I_t)
 
-        tf.logging.info('\n begin nmf ...')
+        print('\n begin nmf ...')
 
-        ws, hs = mynmf(phi_s, n_components=n_components, epochs=1000)
-        wt, ht = mynmf(phi_t, n_components=n_components, epochs=1000)
+        ws, hs = mynmf(phi_s, n_components=n_components, epochs=600)
+        wt, ht = mynmf(phi_t, n_components=n_components, epochs=600)
 
         return ws, wt
-
 
     def l_bfgs(self, sess, encodings, epochs, lambd):
         writer = tf.summary.FileWriter(logdir=self.logdir)
@@ -165,18 +162,21 @@ class Net(object):
                 method='L-BFGS-B',
                 options={'maxiter': 100})
 
+        print('Saving file ... to fol {{{}}}'.format(self.spath))
         for ep in range(epochs):
+            i_ = i
             since = int(time.time())
 
             optimizer.minimize(sess, loss_callback=loss_tracking, fetches=[loss, summ])
-            tf.logging.info(' Saving file ... to fol {{{}}} \n \t Epoch: {}/{} -- Time-lapse: {}s'.
-                            format(self.spath, ep, epochs - 1, int(time.time() - since)))
+            c = sess.run(loss)
+            print('Epoch: {0:}/{1:} after {2:} iters -- time-lapse: {3:.2f}s -- loss: {4:.5f}'.
+                  format(ep, epochs - 1, i - i_, int(time.time() - since), c))
 
             audio = sess.run(self.graph['quantized_input'])
             audio = use.inv_mu_law_numpy(audio)
 
             if not (ep + 1) % 10:
-                tf.logging.info(' visualize actis ...')
+                print(' visualize actis ...')
                 enc = self.get_embeds(sess, audio)
                 use.vis_actis(audio[0], enc, self.fig_dir, ep, self.layers)
 
@@ -210,7 +210,7 @@ class Net(object):
 
             encodings = self.get_embeds(sess, self.wav)
 
-            tf.logging.info('\nEnc shape: {}\n'.format(encodings.shape))
+            print('\nEnc shape: {}\n'.format(encodings.shape))
             if ins_families is not None:
                 assert len(ins_families) == 2
                 type_s, type_t = ins_families

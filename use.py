@@ -76,9 +76,9 @@ def inv_mu_law_numpy(x, mu=255.0):
 def compare_2_matrix(ws, wt, figdir):
     figs, axs = plt.subplots(1, 2, figsize=(40, 10))
     axs[0].set_aspect('equal')
-    axs[0].imshow(ws, interpolation='nearest', cmap=plt.cm.ocean)
+    axs[0].imshow(ws / np.max(ws), interpolation='nearest', cmap=plt.cm.ocean)
     axs[1].set_aspect('equal')
-    axs[1].imshow(wt, interpolation='nearest', cmap=plt.cm.ocean)
+    axs[1].imshow(wt / np.max(wt), interpolation='nearest', cmap=plt.cm.ocean)
     #plt.colorbar()
     plt.savefig(os.path.join(figdir, 'ws-wt.png'), dpi=50)
 
