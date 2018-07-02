@@ -88,7 +88,7 @@ class Net(object):
 
         embeds = sess.run(self.embeds,
                           feed_dict={self.graph['quantized_input']: use.mu_law_numpy(aud)})
-        embeds = np.concatenate(embeds, axis=0)
+        embeds = np.concatenate(embeds, axis=2)
 
         return embeds
 
@@ -130,8 +130,8 @@ class Net(object):
 
         print('\n begin nmf ...')
 
-        ws, hs = mynmf(phi_s, n_components=n_components, epochs=600)
-        wt, ht = mynmf(phi_t, n_components=n_components, epochs=600)
+        ws, hs = mynmf(phi_s, n_components=n_components, epochs=1000)
+        wt, ht = mynmf(phi_t, n_components=n_components, epochs=1000)
 
         return ws, wt
 
@@ -141,7 +141,7 @@ class Net(object):
 
         with tf.name_scope('loss'):
             loss = \
-                (1 - lambd) * tf.nn.l2_loss(tf.concat(self.embeds, axis=0) - encodings)
+                (1 - lambd) * tf.nn.l2_loss(tf.concat(self.embeds, axis=2) - encodings)
             tf.summary.scalar('loss', loss)
 
         summ = tf.summary.merge_all()
@@ -152,7 +152,7 @@ class Net(object):
             nonlocal ep
             nonlocal since
             if not i % 5:
-                print('Epoch: {0:}/{1:} reached in {2:} (last: {3:}) iters after {4:.2f}s -- loss: {5:.5f}'.
+                print('Ep: {0:}/{1:}--iter {2:} (last: {3:})--TOTAL time-lapse {4:.2f}s--loss: {5:.4f}'.
                       format(ep, epochs - 1, i, i_, int(time.time() - since), loss_), end='\r', flush=True)
             writer.add_summary(summ_, global_step=i)
             i += 1

@@ -16,10 +16,11 @@ tf.logging.set_verbosity(tf.logging.WARN)
 
 plt.switch_backend('agg')
 
-MALE = [17, 61, 81, 154, 562, 817, 866, 926, 1041, 1066, 1106, 1298, 1437,
-        1509, 1541, 1593]
-FEMALE = [419, 812, 1000, 1224, 1228, 1333, 1460, 1567, 1618]
-
+#MALE = [17, 61, 81, 154, 562, 817, 866, 926, 1041, 1066, 1106, 1298, 1437,
+#        1509, 1541, 1593]
+#FEMALE = [419, 812, 1000, 1224, 1228, 1333, 1460, 1567, 1618]
+MALE = [17]
+FEMALE = [419]
 
 def decode(serialized_example):
     features = tf.parse_single_example(
@@ -86,7 +87,7 @@ class SpeechNet(object):
             aud = np.reshape(aud, [1, self.length])
         embeds = sess.run(self.embeds,
                           feed_dict={self.graph['quantized_input']: use.mu_law_numpy(aud)})
-        embeds = np.concatenate(embeds, axis=0)
+        embeds = np.concatenate(embeds, axis=2)
         return embeds
 
     def cpt_differ(self, sess, male2female, examples, n_components):
@@ -141,7 +142,7 @@ class SpeechNet(object):
 
         with tf.name_scope('loss'):
             loss = \
-                (1 - lambd) * tf.nn.l2_loss(tf.concat(self.embeds, axis=0) - encodings)
+                (1 - lambd) * tf.nn.l2_loss(tf.concat(self.embeds, axis=2) - encodings)
             tf.summary.scalar('loss', loss)
 
         summ = tf.summary.merge_all()
@@ -154,8 +155,8 @@ class SpeechNet(object):
             nonlocal ep
             nonlocal since
             if not i % 5:
-                print('Epoch: {0:}/{1:} reached in {2:} (last: {3:}) iters after {4:.2f}s -- loss: {5:.5f}'.
-                      format(ep, epochs - 1, i, i_, time.time() - since, loss_), end='\r', flush=True)
+                print('Ep: {0:}/{1:}--iter {2:} (last: {3:})--TOTAL time-lapse {4:.2f}s--loss: {5:.4f}'.
+                      format(ep + 1, epochs, i, i_, time.time() - since, loss_), end='\r', flush=True)
             writer.add_summary(summ_, global_step=i)
             i += 1
 

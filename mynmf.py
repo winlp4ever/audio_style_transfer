@@ -69,18 +69,18 @@ def mynmf(X, W=None, H=None, n_components=40, updt_w=True, updt_h=True, epochs=1
                       format(i, c, time.time() - since), end='\r', flush=True)
 
         W, H =  sess.run([w, h])
-        print(' FINAL LOSS : {0:.4f}/{1:.4f} after {2:} epochs in {3:.4f}s'.
+        print('FINAL LOSS : {0:.4f}/{1:.4f} after {2:} epochs in {3:.4f}s'.
                         format(norm(X - np.matmul(W, H)), norm(X), epochs, time.time() - since))
 
     return W / norm(W), H * norm(W)
 
 
 def main():
-    n_components = 20
-    epochs = 3000
+    n_components = 40
+    epochs = 1000
     X = np.random.sample([128, 320000])
-    w, h = mynmf(X, n_components, epochs)
-    nmf_ = NMF(n_components=n_components, init='random', random_state=0, max_iter=400, solver='mu', verbose=1)
+    w, h = mynmf(X, n_components=n_components, epochs=epochs)
+    nmf_ = NMF(n_components=n_components, init='random', random_state=0, max_iter=400, solver='cd', verbose=1)
     since_ = time.time()
     W_ = nmf_.fit_transform(X)
     H_ = nmf_.components_

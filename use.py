@@ -11,7 +11,7 @@ ins = ['bass', 'brass', 'flute', 'guitar', 'keyboard', 'mallet', 'organ', 'reed'
        'vocal']
 
 abbrevs = {'length': 'l', 'layers': 'lyr', 'n_components': 'cpn', 'examples': 'ex', 'epochs': 'ep', 'qualities': 'qult',
-           'lambd': 'lbd'}
+           'lambd': 'lbd', 'batch_size': 'batch'}
 
 
 def gt_s_path(suppath, **kwargs):
@@ -76,10 +76,11 @@ def inv_mu_law_numpy(x, mu=255.0):
 def compare_2_matrix(ws, wt, figdir):
     figs, axs = plt.subplots(1, 2, figsize=(40, 10))
     axs[0].set_aspect('equal')
-    axs[0].imshow(ws / np.max(ws), interpolation='nearest', cmap=plt.cm.ocean)
+    im0 = axs[0].imshow(ws / np.max(ws), interpolation='nearest', cmap=plt.cm.ocean)
     axs[1].set_aspect('equal')
-    axs[1].imshow(wt / np.max(wt), interpolation='nearest', cmap=plt.cm.ocean)
-    #plt.colorbar()
+    im1 = axs[1].imshow(wt / np.max(wt), interpolation='nearest', cmap=plt.cm.ocean)
+    plt.colorbar(im0, ax=axs[0])
+    plt.colorbar(im1, ax=axs[1])
     plt.savefig(os.path.join(figdir, 'ws-wt.png'), dpi=50)
 
 
@@ -94,6 +95,7 @@ def transform(enc, ws, wt, n_components, figdir=None):
 
     u = np.matmul(hT, ws.T)
     print(' Error for ws * h_ = enc: {}'.format(norm(enc - u) / norm(enc)))
+    print(' difference between two matrices {}'.format(norm(ws - wt)))
 
     return np.expand_dims(np.matmul(hT, wt.T), axis=0)
 
