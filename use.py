@@ -73,8 +73,8 @@ def inv_mu_law_numpy(x, mu=255.0):
     return out
 
 
-def compare_2_matrix(ws, wt, figdir):
-    figs, axs = plt.subplots(1, 2, figsize=(40, 10))
+def compare_2_matrix(ws, wt, figdir, save_matrices=False):
+    figs, axs = plt.subplots(1, 2, figsize=(10, 40))
     axs[0].set_aspect('equal')
     im0 = axs[0].imshow(ws / np.max(ws), interpolation='nearest', cmap=plt.cm.ocean)
     axs[1].set_aspect('equal')
@@ -82,6 +82,17 @@ def compare_2_matrix(ws, wt, figdir):
     plt.colorbar(im0, ax=axs[0])
     plt.colorbar(im1, ax=axs[1])
     plt.savefig(os.path.join(figdir, 'ws-wt.png'), dpi=50)
+
+    rows, cols = ws.shape
+
+    for i in range(cols):
+        figs, axs = plt.subplots(1, 2, figsize=(20, 5))
+        axs[0].plot(ws[:, i])
+        axs[1].plot(wt[:, i])
+        plt.savefig(os.path.join(figdir, 'ws-wt-col{}.png'.format(i)), dpi=50)
+
+    np.save(os.path.join(figdir,'ws.txt'), arr=ws)
+    np.save(os.path.join(figdir,'wt.txt'), arr=wt)
 
 
 def transform(enc, ws, wt, n_components, figdir=None):

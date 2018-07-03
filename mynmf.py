@@ -27,6 +27,8 @@ def _multiplicative_update_h(X, W, H):
 
 
 def mynmf(X, W=None, H=None, n_components=40, updt_w=True, updt_h=True, epochs=1000):
+    print(' max {} -- min {}'.format(np.max(X), np.min(X)))
+    assert (X >= 0).all()
     np.random.seed()
     f, t = X.shape
     avg = np.sqrt(X.mean() / n_components)
@@ -80,7 +82,7 @@ def main():
     epochs = 1000
     X = np.random.sample([128, 320000])
     w, h = mynmf(X, n_components=n_components, epochs=epochs)
-    nmf_ = NMF(n_components=n_components, init='random', random_state=0, max_iter=400, solver='cd', verbose=1)
+    nmf_ = NMF(n_components=n_components, init='random', random_state=0, max_iter=1000, solver='cd', verbose=1)
     since_ = time.time()
     W_ = nmf_.fit_transform(X)
     H_ = nmf_.components_

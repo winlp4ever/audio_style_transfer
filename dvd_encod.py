@@ -9,24 +9,25 @@ from mynmf import mynmf
 import time
 import argparse
 import matplotlib.pyplot as plt
+from nsynth.wavenet import fastgen
+
 
 tf.logging.set_verbosity(tf.logging.WARN)
 
 plt.switch_backend('agg')
 
 class dvd_test(object):
-    def __init__(self, savepath, checkpoint_path, logdir, figdir, batch_size=16384, sr=16000, layer_ids=[29]):
+    def __init__(self, savepath, checkpoint_path, logdir, figdir, batch_size=16384, sr=16000):
         self.logdir = logdir
         self.savepath = savepath
         self.checkpoint_path = checkpoint_path
         self.figdir = figdir
         self.batch_size = batch_size
         self.sr = sr
-        self.layer_ids = layer_ids
-        self.graph, self.embeds = self.build(batch_size, layer_ids)
+        self.graph = self.build(batch_size)
 
     @staticmethod
-    def build(length, layer_ids):
+    def build(length):
         config = Cfg()
         with tf.device("/gpu:0"):
             x = tf.Variable(
@@ -37,9 +38,7 @@ class dvd_test(object):
 
             graph = config.build({'quantized_wav': x}, is_training=True)
 
-        lyrs = [config.extracts[i] for i in layer_ids]
-
-        return graph, lyrs
+        return graph
 
     def load_model(self, sess):
         variables = tf.global_variables()
@@ -52,9 +51,10 @@ class dvd_test(object):
         if len(aud.shape) == 1:
             aud = aud[: self.batch_size]
             aud = np.reshape(aud, [1, self.batch_size])
-        embeds = sess.run(self.embeds,
+        embeds = sess.run(self.graph['encoding'],
                           feed_dict={self.graph['quantized_input']: use.mu_law_numpy(aud)})
-        embeds = np.concatenate(embeds, axis=2)
+
+        embeds += 15
 
         return embeds
 
@@ -66,8 +66,6 @@ class dvd_test(object):
         while i + self.batch_size < min(len(audio), 50 * self.batch_size):
 
             embeds = self.get_embeds(sess, audio[i: i + self.batch_size])
-            embeds = embeds.reshape([1, -1, 16, 128 * len(self.layer_ids)])
-            embeds = np.mean(embeds, axis=2) + np.std(embeds, axis=2)
             I.append(embeds)
             print('I size {}'.format(len(I)), end='\r', flush=True)
             i += self.batch_size
@@ -82,7 +80,7 @@ class dvd_test(object):
 
         with tf.name_scope('loss'):
             loss = \
-                (1 - lambd) * tf.nn.l2_loss(tf.concat(self.embeds, axis=2) - encodings)
+                (1 - lambd) * tf.nn.l2_loss(tf.concat(self.graph['encoding'], axis=2) - encodings)
             tf.summary.scalar('loss', loss)
 
         summ = tf.summary.merge_all()
@@ -120,12 +118,12 @@ class dvd_test(object):
 
             if not (ep + 1) % 10:
                 enc = self.get_embeds(sess, audio)
-                use.vis_actis(audio[0], enc, self.figdir, ep, self.layer_ids)
+                use.vis_actis(audio[0], enc, self.figdir, ep, [29])
 
             sp = os.path.join(self.savepath, 'ep-{}.wav'.format(ep))
             librosa.output.write_wav(sp, audio[0] / np.max(audio[0]), sr=self.sr)
 
-    def run(self, main_file, src_file, trg_file, epochs, n_components):
+    def run(self, main_file, src_file, trg_file, n_components, sample_length=32000):
         session_config = tf.ConfigProto(allow_soft_placement=True)
         session_config.gpu_options.allow_growth = True
 
@@ -139,8 +137,14 @@ class dvd_test(object):
             aud, _ = librosa.load(main_file, sr=self.sr)
             enc = self.get_embeds(sess, aud)
             enc = use.transform(enc, ws, wt, n_components=n_components, figdir=self.figdir)
-
-            self.l_bfgs(sess, enc, epochs=epochs, lambd=0)
+            #self.l_bfgs(sess, enc, epochs=epochs, lambd=0)
+            enc -= 15
+        print('Saving file ... to fol {{{}}}'.format(self.savepath))
+        fastgen.synthesize(
+            enc,
+            save_paths=[os.path.join(self.savepath, 'synthesize.wav')],
+            checkpoint_path=self.checkpoint_path,
+            samples_per_save=sample_length)
 
 
 def main():
@@ -149,11 +153,9 @@ def main():
     parser.add_argument('filename')
     parser.add_argument('src_fn')
     parser.add_argument('trg_fn')
-    parser.add_argument('--epochs', nargs='?', type=int, default=100)
     parser.add_argument('--n_components', nargs='?', type=int, default=40)
     parser.add_argument('--batch_size', nargs='?', type=int, default=16384)
     parser.add_argument('--sr', nargs='?', type=int, default=16000)
-    parser.add_argument('--layers', nargs='*', type=int, default=[29])
 
     parser.add_argument('--ckpt_path', nargs='?', default='./nsynth/model/wavenet-ckpt/model.ckpt-200000')
     parser.add_argument('--figdir', nargs='?', default='./data/fig')
@@ -175,8 +177,8 @@ def main():
     src_fn = delta(args.src_fn)
     trg_fn = delta(args.trg_fn)
 
-    test = dvd_test(savepath, args.ckpt_path, logdir, figdir, args.batch_size, args.sr, args.layers)
-    test.run(fn, src_fn, trg_fn, args.epochs, args.n_components)
+    test = dvd_test(savepath, args.ckpt_path, logdir, figdir, args.batch_size, args.sr)
+    test.run(fn, src_fn, trg_fn, args.n_components)
 
 if __name__ == '__main__':
     main()

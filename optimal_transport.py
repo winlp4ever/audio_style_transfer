@@ -86,7 +86,7 @@ def OT_ADMM(palette2Mod, paletteRef, eps=1e-4, miter=1e5, verbose=False):
     bounds = np.zeros(2, dtype='object')
     size_pal = [palette2Mod.shape[0],paletteRef.shape[0]]
     for i in range(2):
-        bounds[i] = np.array([[0, 1]]*size_pal[i])/float(size_pal[i])
+        bounds[i] = np.array([[1, 1]]*size_pal[i])/float(size_pal[i])
 
     # Dual variables
     Lambda = np.array([np.zeros(C.shape)]*3)
