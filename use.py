@@ -106,7 +106,7 @@ def transform(enc, ws, wt, n_components, figdir=None):
 
     u = np.matmul(hT, ws.T)
     print(' Error for ws * h_ = enc: {}'.format(norm(enc - u) / norm(enc)))
-    print(' difference between two matrices {}'.format(norm(ws - wt)))
+    print(' difference between two matrices {}'.format(norm(ws - wt) / norm(ws)))
 
     return np.expand_dims(np.matmul(hT, wt.T), axis=0)
 

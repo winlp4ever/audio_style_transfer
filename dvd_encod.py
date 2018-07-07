@@ -139,6 +139,8 @@ class dvd_test(object):
             enc = use.transform(enc, ws, wt, n_components=n_components, figdir=self.figdir)
             #self.l_bfgs(sess, enc, epochs=epochs, lambd=0)
             enc -= 15
+        plt.plot(enc[0])
+        plt.savefig('./data/im.png')
         print('Saving file ... to fol {{{}}}'.format(self.savepath))
         fastgen.synthesize(
             enc,
