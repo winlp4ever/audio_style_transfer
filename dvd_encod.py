@@ -136,7 +136,7 @@ class dvd_test(object):
             wt = self.get_phi(sess, trg_file, n_components=n_components)
             aud, _ = librosa.load(main_file, sr=self.sr)
             enc = self.get_embeds(sess, aud)
-            enc = use.transform(enc, ws, wt, n_components=n_components, figdir=self.figdir)
+            #enc = use.transform(enc, ws, wt, n_components=n_components, figdir=self.figdir)
             #self.l_bfgs(sess, enc, epochs=epochs, lambd=0)
             enc -= 15
         print('Saving file ... to fol {{{}}}'.format(self.savepath))

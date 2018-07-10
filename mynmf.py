@@ -74,7 +74,8 @@ def mynmf(X, W=None, H=None, n_components=40, updt_w=True, updt_h=True, epochs=1
         print('FINAL LOSS : {0:.4f}/{1:.4f} after {2:} epochs in {3:.4f}s'.
                         format(norm(X - np.matmul(W, H)), norm(X), epochs, time.time() - since))
 
-    return W / norm(W), H * norm(W)
+    nrm = np.expand_dims(norm(W, axis=0), 0)
+    return W / nrm, H * nrm.T
 
 
 def main():

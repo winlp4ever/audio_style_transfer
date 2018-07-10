@@ -37,8 +37,22 @@ def decode(serialized_example):
     return id, audio
 
 
+def load_wav(path, l, s):
+    if path:
+        wav, _ = librosa.load(path, sr=s, mono=True)
+        wav = wav[:l]
+        return np.reshape(wav, [1, l])
+    return None
+
+
 class SpeechNet(object):
-    def __init__(self, trg_path, src_path, spath, fig_dir, tf_path, checkpoint_path, logdir, layers, sr, length):
+    def __init__(self, trg_path, src_path, spath, fig_dir,
+                 tf_path='./data/dataset/aac-test.tfrecord',
+                 checkpoint_path='./nsynth/model/wavenet-ckpt/model.ckpt-200000',
+                 logdir='./log',
+                 layers=[17],
+                 sr=16000,
+                 length=16384):
         self.data = tf.data.TFRecordDataset([tf_path]).map(decode)
         self.checkpoint_path = checkpoint_path
         self.spath = spath
@@ -51,12 +65,7 @@ class SpeechNet(object):
 
     @staticmethod
     def build(src_path, trg_path, layers, length, sr):
-        def load_wav(path, l, s):
-            if path:
-                wav, _ = librosa.load(path, sr=s, mono=True)
-                wav = wav[:l]
-                return np.reshape(wav, [1, l])
-            return None
+
 
         src, trg = load_wav(src_path, length, sr), load_wav(trg_path, length, sr)
 
@@ -205,6 +214,24 @@ class SpeechNet(object):
 
             self.l_bfgs(sess, encodings, epochs, lambd)
 
+    def test(self):
+        fn1 = './data/src/male.wav'
+        fn2 = './data/src/female.wav'
+        wav1 = load_wav(fn1, self.length, self.sr)
+        wav2 = load_wav(fn2, self.length, self.sr)
+        session_config = tf.ConfigProto(allow_soft_placement=True)
+        session_config.gpu_options.allow_growth = True
+
+        with tf.Session(config=session_config) as sess:
+            sess.run(tf.global_variables_initializer())
+
+            self.load_model(sess)
+            embeds1 = self.get_embeds(sess, wav1)
+            embeds2 = self.get_embeds(sess, wav2)
+
+            embeds1[:, :, :100] = embeds2[:, :, :100]
+            self.l_bfgs(sess, embeds1, 100, 0.)
+
 
 def main():
     class DefaultList(argparse.Action):
@@ -262,6 +289,7 @@ def main():
 
     net = SpeechNet(filepath, src_path, savepath, plotpath, args.tfpath, args.ckpt_path, logdir, args.layers, args.sr,
                     args.length)
+    #net.test()
     net.run(args.male2female, args.epochs, args.lambd, args.examples, args.n_components)
 
     # save spec and cqt figs
