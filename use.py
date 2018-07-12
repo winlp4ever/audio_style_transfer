@@ -6,6 +6,7 @@ from sklearn.decomposition.nmf import non_negative_factorization
 from numpy.linalg import norm
 from optimal_transport import compute_permutation
 import librosa
+import tensorflow as tf
 
 ins = ['bass', 'brass', 'flute', 'guitar', 'keyboard', 'mallet', 'organ', 'reed', 'string', 'synth_lead',
        'vocal']
@@ -71,6 +72,13 @@ def inv_mu_law_numpy(x, mu=255.0):
     out = (x + 0.5) * 2. / (mu + 1)
     out = np.sign(out) / mu * ((1 + mu) ** np.abs(out) - 1)
     out = np.where(np.equal(x, 0), x, out)
+    return out
+
+def inv_mu_law(x, mu=255):
+    x = tf.cast(x, tf.float32)
+    out = (x + 0.5) * 2. / (mu + 1)
+    out = tf.sign(out) / mu * ((1 + mu) ** tf.abs(out) - 1)
+    out = tf.where(tf.equal(x, 0), x, out)
     return out
 
 
