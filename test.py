@@ -2,11 +2,10 @@ import tensorflow as tf
 import numpy as np
 
 import librosa
+a = np.random.sample((1, 2, 3))
+u = tf.Variable(a, dtype=tf.float32)
+w = tf.transpose(u[0])
 
-fpath = './data/src/piano_solo_mono.wav'
-out = './data/src/piano_son.wav'
-aud, sr = librosa.load(fpath, sr=16000)
-aud = aud[4 * sr:]
-
-librosa.output.write_wav(out, aud, sr)
-
+with tf.Session() as sess:
+    sess.run(tf.global_variables_initializer())
+    print(sess.run(w).shape)

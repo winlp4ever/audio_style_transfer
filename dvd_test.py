@@ -58,23 +58,20 @@ class dvd_test(object):
 
         return embeds
 
-    def get_phi(self, sess, filename, n_components=20, epochs=1000):
+    def get_phi(self, sess, filename, max_exs=50):
         print('load file ...')
         audio, _ = librosa.load(filename, sr=self.sr)
         I = []
         i = 0
-        while i + self.batch_size < min(len(audio), 50 * self.batch_size):
+        while i + self.batch_size <= min(len(audio), max_exs * self.batch_size):
 
             embeds = self.get_embeds(sess, audio[i: i + self.batch_size])
-            embeds = embeds.reshape([1, -1, 16, 128 * len(self.layer_ids)])
-            embeds = np.mean(embeds, axis=2) + np.std(embeds, axis=2)
             I.append(embeds)
             print('I size {}'.format(len(I)), end='\r', flush=True)
             i += self.batch_size
 
         phi = np.concatenate(I, axis=1)[0].T
-        w, h = mynmf(phi, n_components=n_components, epochs=epochs)
-        return w
+        return phi
 
     def l_bfgs(self, sess, encodings, epochs, lambd):
         writer = tf.summary.FileWriter(logdir=self.logdir)
@@ -125,7 +122,7 @@ class dvd_test(object):
             sp = os.path.join(self.savepath, 'ep-{}.wav'.format(ep))
             librosa.output.write_wav(sp, audio[0] / np.max(audio[0]), sr=self.sr)
 
-    def run(self, main_file, src_file, trg_file, epochs, n_components):
+    def run(self, main_file, src_file, trg_file, epochs, n_components, max_exs=50, show_mats=False):
         session_config = tf.ConfigProto(allow_soft_placement=True)
         session_config.gpu_options.allow_growth = True
 
@@ -134,8 +131,16 @@ class dvd_test(object):
 
             self.load_model(sess)
 
-            ws = self.get_phi(sess, src_file, n_components=n_components)
-            wt = self.get_phi(sess, trg_file, n_components=n_components)
+            phis = self.get_phi(sess, src_file, max_exs=max_exs)
+            phit = self.get_phi(sess, trg_file, max_exs=max_exs)
+
+            #-----
+            if show_mats:
+                use.vis_mats(phis, phit, self.layer_ids, self.figdir, src_file, trg_file )
+
+            ws, _ = mynmf(phis, n_components=n_components, epochs=epochs)
+            wt, _ = mynmf(phit, n_components=n_components, epochs=epochs)
+
             aud, _ = librosa.load(main_file, sr=self.sr)
             enc = self.get_embeds(sess, aud)
             enc = use.transform(enc, ws, wt, n_components=n_components, figdir=self.figdir)
@@ -160,6 +165,7 @@ def main():
     parser.add_argument('--dir', nargs='?', default='./data/src')
     parser.add_argument('--outdir', nargs='?', default='./data/out')
     parser.add_argument('--logdir', nargs='?', default='./log')
+    parser.add_argument('--max_exs', nargs='?', default=50, type=int)
     parser.add_argument('--cmt')
 
 
@@ -176,15 +182,7 @@ def main():
     trg_fn = delta(args.trg_fn)
 
     test = dvd_test(savepath, args.ckpt_path, logdir, figdir, args.batch_size, args.sr, args.layers)
-    test.run(fn, src_fn, trg_fn, args.epochs, args.n_components)
+    test.run(fn, src_fn, trg_fn, args.epochs, args.n_components, args.max_exs)
 
 if __name__ == '__main__':
     main()
-
-
-
-
-
-
-
-

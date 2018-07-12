@@ -6,6 +6,7 @@ from sklearn.decomposition.nmf import non_negative_factorization
 from numpy.linalg import norm
 from optimal_transport import compute_permutation
 import librosa
+import tensorflow as tf
 
 ins = ['bass', 'brass', 'flute', 'guitar', 'keyboard', 'mallet', 'organ', 'reed', 'string', 'synth_lead',
        'vocal']
@@ -14,7 +15,7 @@ abbrevs = {'length': 'l', 'layers': 'lyr', 'n_components': 'cpn', 'examples': 'e
            'lambd': 'lbd', 'batch_size': 'batch'}
 
 
-def gt_s_path(suppath, **kwargs):
+def gt_s_path(suppath, exe_file=None, **kwargs):
     path = ''
     for name, value in kwargs.items():
         if name == 'ins' and value is not None:
@@ -40,7 +41,8 @@ def gt_s_path(suppath, **kwargs):
                     vals += '-%d' % i
                 value = vals
             path += '{}-{}_'.format(name, value)
-
+    if exe_file:
+        path = exe_file + '::' + path
     path = os.path.join(suppath, path)
     if not os.path.exists(path):
         os.makedirs(path)
@@ -72,13 +74,20 @@ def inv_mu_law_numpy(x, mu=255.0):
     out = np.where(np.equal(x, 0), x, out)
     return out
 
+def inv_mu_law(x, mu=255):
+    x = tf.cast(x, tf.float32)
+    out = (x + 0.5) * 2. / (mu + 1)
+    out = tf.sign(out) / mu * ((1 + mu) ** tf.abs(out) - 1)
+    out = tf.where(tf.equal(x, 0), x, out)
+    return out
+
 
 def compare_2_matrix(ws, wt, figdir, save_matrices=False):
     figs, axs = plt.subplots(1, 2, figsize=(10, 40))
     axs[0].set_aspect('equal')
-    im0 = axs[0].imshow(ws / np.max(ws), interpolation='nearest', cmap=plt.cm.ocean)
+    im0 = axs[0].imshow(ws, interpolation='nearest', cmap=plt.cm.ocean)
     axs[1].set_aspect('equal')
-    im1 = axs[1].imshow(wt / np.max(wt), interpolation='nearest', cmap=plt.cm.ocean)
+    im1 = axs[1].imshow(wt, interpolation='nearest', cmap=plt.cm.ocean)
     plt.colorbar(im0, ax=axs[0])
     plt.colorbar(im1, ax=axs[1])
     plt.savefig(os.path.join(figdir, 'ws-wt.png'), dpi=50)
@@ -88,11 +97,13 @@ def compare_2_matrix(ws, wt, figdir, save_matrices=False):
     for i in range(cols):
         figs, axs = plt.subplots(1, 2, figsize=(20, 5))
         axs[0].plot(ws[:, i])
+        axs[0].set_ylim(top=1.)
         axs[1].plot(wt[:, i])
+        axs[1].set_ylim(top=1.)
         plt.savefig(os.path.join(figdir, 'ws-wt-col{}.png'.format(i)), dpi=50)
 
-    np.save(os.path.join(figdir,'ws.txt'), arr=ws)
-    np.save(os.path.join(figdir,'wt.txt'), arr=wt)
+    np.save(os.path.join(figdir,'ws'), arr=ws)
+    np.save(os.path.join(figdir,'wt'), arr=wt)
 
 
 def transform(enc, ws, wt, n_components, figdir=None):
@@ -108,7 +119,7 @@ def transform(enc, ws, wt, n_components, figdir=None):
     print(' Error for ws * h_ = enc: {}'.format(norm(enc - u) / norm(enc)))
     print(' difference between two matrices {}'.format(norm(ws - wt) / norm(ws)))
 
-    return np.expand_dims(np.matmul(hT, wt.T), axis=0)
+    return np.expand_dims(np.matmul(hT, ws.T), axis=0)
 
 
 def vis_actis(aud, enc, fig_dir, ep, layers, nb_channels=5, dspl=64, output_file=False):
@@ -161,6 +172,33 @@ def vis_actis_ens(aud, enc, fig_dir, ep, layer_ids, nb_channels=5, dspl=256, out
     if output_file:
         librosa.output.write_wav(sp + '.wav', aud, sr=16000)
 
+def vis_mats(phis, phit, layer_ids, figdir=None, srcname=None, trgname=None):
+    fig, axs = plt.subplots(len(layer_ids) + 1, 2, figsize=(40, 10 * len(layer_ids) + 1))
+    if srcname:
+        axs[0, 0].set_title(srcname)
+    if trgname:
+        axs[0, 1].set_title(trgname)
+    axs[0, 0].imshow(phis, interpolation='nearest', cmap=plt.cm.plasma, aspect='auto')
+    axs[0, 1].imshow(phit, interpolation='nearest', cmap=plt.cm.plasma, aspect='auto')
+    for i in range(len(layer_ids)):
+        ps = phis[i * 128:(i + 1) * 128]
+        pt = phit[i * 128:(i + 1) * 128]
+
+        ps = np.dot(ps, ps.T)
+        pt = np.dot(pt, pt.T)
+        axs[i + 1, 0].set_title('layer-{}'.format(layer_ids[i]))
+        axs[i + 1, 0].imshow(ps / np.max(ps), interpolation='nearest', cmap=plt.cm.plasma)
+
+        axs[i + 1, 1].set_title('layer-{}'.format(layer_ids[i]))
+        im = axs[i + 1, 1].imshow(pt / np.max(pt), interpolation='nearest', cmap=plt.cm.plasma)
+    fig.subplots_adjust(right=0.8)
+    cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+    fig.colorbar(im, cax=cbar_ax)
+    print('save mat fig ...')
+    if figdir:
+        plt.savefig(os.path.join(figdir, 'mats_plt.png'), dpi=150)
+    else:
+        plt.show()
 
 def vis_mats(phis, phit, layer_ids, src_fn, trg_fn, figdir=None, cm_name='plasma'):
     fig, axs = plt.subplots(len(layer_ids) + 1, 2, figsize=(40, 10 * (len(layer_ids) + 1)))
