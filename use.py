@@ -199,28 +199,3 @@ def vis_mats(phis, phit, layer_ids, figdir=None, srcname=None, trgname=None):
         plt.savefig(os.path.join(figdir, 'mats_plt.png'), dpi=150)
     else:
         plt.show()
-
-def vis_mats(phis, phit, layer_ids, src_fn, trg_fn, figdir=None, cm_name='plasma'):
-    fig, axs = plt.subplots(len(layer_ids) + 1, 2, figsize=(40, 10 * (len(layer_ids) + 1)))
-    cmap = plt.get_cmap(cm_name)
-
-    axs[0, 0].imshow(phis.T, cmap=cmap, aspect='auto')
-    axs[0, 0].set_title(src_fn)
-
-    axs[0, 1].imshow(phit.T, cmap=cmap, aspect='auto')
-    axs[0, 1].set_title(trg_fn)
-
-    for i in range(len(layer_ids)):
-        ps = phis[:, 128 * i: 128 * (i + 1)]
-        pt = phit[:, 128 * i: 128 * (i + 1)]
-        axs[i + 1, 0].imshow(np.dot(ps.T, ps), cmap=cmap)
-        axs[i + 1, 0].set_title('layer {}'.format(layer_ids[i]))
-        axs[i + 1, 1].imshow(np.dot(pt.T, pt), cmap=cmap)
-
-    if figdir:
-        plt.savefig(os.path.join(figdir, 'vis_mats.png'), fig)
-    else:
-        plt.show()
-    return
-
-

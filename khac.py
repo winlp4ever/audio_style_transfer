@@ -46,10 +46,12 @@ class GatysNet(object):
 
         cont_embeds = tf.concat([config.extracts[i] for i in cont_lyr_ids], axis=2)[0]
         stl = []
-        for i in range(10):
+        for i in range(60):
             embeds = tf.stack([config.extracts[j][0, :, i] for j in range(10, 20)], axis=1)
             embeds = tf.matmul(embeds, embeds, transpose_a=True)
-            stl.append(embeds)
+            m = tf.reduce_max(embeds)
+            m = tf.maximum(m, 1e-10)
+            stl.append(embeds / m)
 
         style_embeds = tf.stack(stl, axis=0)
 
@@ -95,8 +97,9 @@ class GatysNet(object):
         with tf.name_scope('loss'):
             content_loss = tf.nn.l2_loss(self.embeds_c - phi_c)
             style_loss = tf.nn.l2_loss(self.embeds_s - phi_s)
+            style_loss *= 1e3
             regularizer = tf.contrib.signal.stft(use.inv_mu_law(self.graph['quantized_input'][0]), frame_length=1024, frame_step=512, name='stft')
-            regularizer = tf.reduce_mean(tf.abs(regularizer))
+            regularizer = tf.reduce_mean(tf.real(regularizer * tf.conj(regularizer)))
 
             loss = content_loss + lambd * style_loss + gamma * regularizer
 
@@ -165,7 +168,7 @@ def main():
     parser.add_argument('--sr', nargs='?', type=int, default=16000)
     parser.add_argument('--cont_lyrs', nargs='*', type=int, default=[29])
     parser.add_argument('--lambd', nargs='?', type=float, default=0.1)
-    parser.add_argument('--gamma', nargs='?', type=float, default=0.1)
+    parser.add_argument('--gamma', nargs='?', type=float, default=0.0)
 
     parser.add_argument('--ckpt_path', nargs='?', default='./nsynth/model/wavenet-ckpt/model.ckpt-200000')
     parser.add_argument('--figdir', nargs='?', default='./data/fig')
