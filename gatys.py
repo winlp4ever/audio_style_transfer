@@ -98,6 +98,8 @@ class GatysNet(object):
                 PtP = np.dot(P.T, P) / P.shape[0]
                 style_loss += tf.nn.l2_loss(EtE - PtP)
 
+            style_loss *= 1e5
+
             loss = (1 - lambd) * content_loss + lambd * style_loss
 
             tf.summary.scalar('content_loss', content_loss)
@@ -109,6 +111,7 @@ class GatysNet(object):
         i = 0
 
         def loss_tracking(loss_, summ_):
+            nonlocal s
             nonlocal i_
             nonlocal i
             nonlocal ep
@@ -116,7 +119,7 @@ class GatysNet(object):
             if not i % 5:
                 print('Ep: {0:}/{1:}--iter {2:} (last: {3:})--TOTAL time-lapse {4:.2f}s--loss: {5:.4f}'.
                       format(ep + 1, epochs, i, i_, time.time() - since, loss_), end='\r', flush=True)
-            writer.add_summary(summ_, global_step=i)
+            writer.add_summary(summ_, global_step=s + i)
             i += 1
 
         with tf.name_scope('optim'):
@@ -129,16 +132,20 @@ class GatysNet(object):
         print('Saving file ... to fol {{{}}}'.format(self.savepath))
         since = time.time()
         i_ = 0
+        s = 0
         for ep in range(epochs):
             i = 0
 
             optimizer.minimize(sess, loss_callback=loss_tracking, fetches=[loss, summ])
             i_ = i
+            s += i
             audio = sess.run(self.graph['quantized_input'])
             audio = use.inv_mu_law_numpy(audio)
 
             sp = os.path.join(self.savepath, 'ep-{}.wav'.format(ep))
             librosa.output.write_wav(sp, audio[0] / np.max(audio[0]), sr=self.sr)
+
+        print('\n')
 
     def run(self, cont_file, style_file, epochs, lambd=0.1):
         session_config = tf.ConfigProto(allow_soft_placement=True)
@@ -161,6 +168,7 @@ def main():
 
     parser.add_argument('cont_fn')
     parser.add_argument('style_fn')
+
     parser.add_argument('--epochs', nargs='?', type=int, default=100)
     parser.add_argument('--batch_size', nargs='?', type=int, default=16384)
     parser.add_argument('--sr', nargs='?', type=int, default=16000)
@@ -182,7 +190,7 @@ def main():
 
     content, style = map(lambda name: os.path.join(args.dir, name) + '.wav', [args.cont_fn, args.style_fn])
 
-    test = GatysNet(savepath, args.ckpt_path, logdir, figdir, args.batch_size, args.sr, args.layers)
+    test = GatysNet(savepath, args.ckpt_path, logdir, figdir, args.batch_size, args.sr, args.cont_lyrs, args.style_lyrs)
     test.run(content, style, epochs=args.epochs, lambd=args.lambd)
 
 
