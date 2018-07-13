@@ -79,7 +79,7 @@ class Cfg(object):
         mu = 255
 
         x = inputs['wav']
-        x_quantized = tf.abs(x)
+        x_quantized = tf.sign(x) * tf.log(1 + mu * tf.abs(x)) / np.log(1 + mu)
         x_scaled = x_quantized
         x_scaled = tf.expand_dims(x_scaled, 2)
 
@@ -198,7 +198,6 @@ class Cfg(object):
             'eval': {
                 'nll': loss
             },
-            'input': x,
             'encoding': encoding,
             'before_enc': enc_
         }

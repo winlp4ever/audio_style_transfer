@@ -2,7 +2,7 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 import numpy as np
-from mdl import Cfg
+from mod import Cfg
 import use
 import librosa
 from mynmf import mynmf
@@ -16,18 +16,14 @@ plt.switch_backend('agg')
 
 def show_gram(mats, ep=None, figdir=None):
     nb_ch = mats.shape[0]
-    fig, axs = plt.subplots(10, 1, figsize=(20, 10 * 10))
-    for i in range(10):
+    fig, axs = plt.subplots(nb_ch, 1, figsize=(10, 10 * (nb_ch)))
+    for i in range(nb_ch):
         axs[i].imshow(mats[i], interpolation='nearest', cmap=plt.cm.plasma)
         axs[i].set_title('channel {}'.format(i))
     if ep is not None:
         plt.savefig(os.path.join(figdir, 'gram-ep{}.png'.format(ep)), dpi=100)
     else:
         plt.savefig(os.path.join(figdir, 'gram-style.png'), dpi=100)
-
-def softmax(tab):
-    out = np.exp(tab)
-    return out / np.sum(out)
 
 
 class GatysNet(object):
@@ -53,17 +49,18 @@ class GatysNet(object):
         config = Cfg()
         with tf.device("/gpu:0"):
             x = tf.Variable(
-                initial_value=np.zeros([1, length]),
+                initial_value=tf.abs(tf.random_normal(shape=[1, length])),
                 trainable=True,
                 name='regenerated_wav',
                 dtype=tf.float32
             )
 
-            graph = config.build({'quantized_wav': x}, is_training=True)
+            graph = config.build({'wav': x}, is_training=True)
+            graph.update({'input': x})
 
         cont_embeds = tf.concat([config.extracts[i] for i in cont_lyr_ids], axis=2)[0]
         stl = []
-        for i in range(60):
+        for i in range(20):
             embeds = tf.stack([config.extracts[j][0, :, i] for j in range(10, 20)], axis=1)
             embeds = tf.matmul(embeds, embeds, transpose_a=True)
             m = tf.reduce_max(embeds)
@@ -76,7 +73,7 @@ class GatysNet(object):
 
     def load_model(self, sess):
         variables = tf.global_variables()
-        variables.remove(self.graph['quantized_input'])
+        variables.remove(self.graph['input'])
 
         saver = tf.train.Saver(var_list=variables)
         saver.restore(sess, self.checkpoint_path)
@@ -90,7 +87,7 @@ class GatysNet(object):
         else:
             embeds = self.embeds_s
         return sess.run(embeds,
-                 feed_dict={self.graph['quantized_input']: use.mu_law_numpy(aud)})
+                 feed_dict={self.graph['input']: aud})
 
     def get_style_phi(self, sess, filename, max_examples=50, show_mat=True):
         print('load file ...')
@@ -115,12 +112,10 @@ class GatysNet(object):
 
         with tf.name_scope('loss'):
             content_loss = tf.nn.l2_loss(self.embeds_c - phi_c)
-            style_loss = 0
-            for i in range(phi_s.shape[0]):
-                p_s = softmax(phi_s[i])
-                style_loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=self.embeds_s[i], labels=p_s))
+            style_loss = tf.nn.l2_loss(self.embeds_s - phi_s)
             style_loss *= 1e3
-            regularizer = tf.nn.l2_loss(self.graph['quantized_input'])
+            regularizer = tf.contrib.signal.stft(self.graph['input'][0], frame_length=1024, frame_step=512, name='stft')
+            regularizer = tf.reduce_mean(tf.abs(regularizer))
 
             loss = content_loss + lambd * style_loss + gamma * regularizer
 
@@ -131,42 +126,35 @@ class GatysNet(object):
 
         summ = tf.summary.merge_all()
 
-        def loss_tracking(loss_, cont_loss_, style_loss_, regularizer_, summ_):
-            nonlocal i_
-            nonlocal i
-            nonlocal ep
-            nonlocal since
-            if not i % 5:
-                print('Ep {0:}/{1:}-it {2:}({3:})-tlapse {4:.2f}s-loss{5:.2f}-{6:.2f}-{7:.2f}-{8:.2f}'.
-                      format(ep + 1, epochs, i, i_, time.time() - since, loss_, cont_loss_, style_loss_, regularizer_), end='\r', flush=True)
-            writer.add_summary(summ_, global_step=i_ + i)
-            i += 1
-
         with tf.name_scope('optim'):
-            optimizer = tf.contrib.opt.ScipyOptimizerInterface(
-                loss,
-                var_list=[self.graph['quantized_input']],
-                method='L-BFGS-B',
-                options={'maxiter': 100})
-
+            optim = tf.train.AdamOptimizer(1e-4)
+            optimizer = optim.minimize(loss, var_list=[self.graph['input']])
         print('Saving file ... to fol {{{}}}'.format(self.savepath))
+
+        #Run optimizer
+        sess.run(tf.variables_initializer(optim.variables()))
+
         since = time.time()
-        i_ = 0
         for ep in range(epochs):
-            i = 0
 
-            optimizer.minimize(sess, loss_callback=loss_tracking, fetches=[loss, content_loss, style_loss, regularizer, summ])
-            i_ = i
-            audio = sess.run(self.graph['quantized_input'])
-            audio = use.inv_mu_law_numpy(audio)
+            _, summ_ = sess.run([optimizer, summ])
+            writer.add_summary(summ_, global_step=ep)
 
-            sp = os.path.join(self.savepath, 'ep-{}.wav'.format(ep))
-            librosa.output.write_wav(sp, audio[0] / np.max(audio[0]), sr=self.sr)
+            if not ep % 20:
+                l, cl, sl, regu = sess.run([loss, content_loss, style_loss, regularizer])
 
-            gram = sess.run(self.embeds_s)
-            show_gram(gram, ep, self.figdir)
+                print('Ep {0:}/{1:}-tlapse {2:.2f}s-loss{3:.2f}-{4:.2f}-{5:.2f}-{6:.2f}'.
+                      format(ep + 1, epochs, time.time() - since, l, cl, sl, regu), end='\r', flush=True)
+            if not ep % 100:
+                audio = sess.run(self.graph['input'])
+                sp = os.path.join(self.savepath, 'step-{}.wav'.format(ep))
+                if np.max(audio[0]) != 0:
+                    librosa.output.write_wav(sp, audio[0] / np.max(audio[0]), sr=self.sr)
 
-    def run(self, cont_file, style_file, epochs, lambd=0.1, gamma=0.1):
+                gram = sess.run(self.embeds_s)
+                show_gram(gram, ep, self.figdir)
+
+    def run(self, cont_file, style_file, epochs=20000, lambd=0.1, gamma=0.1):
         session_config = tf.ConfigProto(allow_soft_placement=True)
         session_config.gpu_options.allow_growth = True
 
@@ -192,7 +180,7 @@ def main():
     parser.add_argument('--sr', nargs='?', type=int, default=16000)
     parser.add_argument('--cont_lyrs', nargs='*', type=int, default=[29])
     parser.add_argument('--lambd', nargs='?', type=float, default=0.1)
-    parser.add_argument('--gamma', nargs='?', type=float, default=0.00)
+    parser.add_argument('--gamma', nargs='?', type=float, default=0.0)
 
     parser.add_argument('--ckpt_path', nargs='?', default='./nsynth/model/wavenet-ckpt/model.ckpt-200000')
     parser.add_argument('--figdir', nargs='?', default='./data/fig')
@@ -203,7 +191,7 @@ def main():
 
     args = parser.parse_args()
 
-    savepath, figdir, logdir = map(lambda dir: use.gt_s_path(use.crt_t_fol(dir), 'khacsoft', **vars(args)),
+    savepath, figdir, logdir = map(lambda dir: use.gt_s_path(use.crt_t_fol(dir), 'caikhac', **vars(args)),
                                    [args.outdir, args.figdir, args.logdir])
 
     content, style = map(lambda name: os.path.join(args.dir, name) + '.wav', [args.cont_fn, args.style_fn])

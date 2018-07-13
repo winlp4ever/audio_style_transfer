@@ -9,7 +9,7 @@ import os
 
 plt.switch_backend('agg')
 
-def build_graph(length, layer_ids):
+def build_graph(length, lyr_stack=1, channel=0):
     config = Cfg()
     with tf.device("/gpu:0"):
         x = tf.Variable(
@@ -20,7 +20,7 @@ def build_graph(length, layer_ids):
 
         graph = config.build({'quantized_wav': x}, is_training=True)
 
-        embeds = tf.concat([config.extracts[i] for i in layer_ids], axis=2)[0][:, ::128]
+        embeds = tf.stack([config.extracts[i][0, :, channel] for i in range(lyr_stack * 10, lyr_stack * 10 + 10)], axis=1)
         graph.update({'embeds': embeds})
 
     return graph
@@ -42,41 +42,36 @@ def read_file(filename, length, sr=16000):
     auds = [aud[i * length: (i + 1) * length] for i in range(len(aud) // length)]
     return auds
 
-def compare2embeds(embeds1, embeds2, layer_ids, figdir=None, ord=None):
-    embeds1 = np.log(embeds1 + 1)
-    embeds2 = np.log(embeds2 + 1)
-    nb_lyrs = len(layer_ids)
+def compare2embeds(embeds1, embeds2, stack, figdir=None, ord=None):
     fig, axs = plt.subplots(1, 2, figsize=(30, 10))
     ptp = np.dot(embeds1.T, embeds1)
     ete = np.dot(embeds2.T, embeds2)
     axs[0].imshow(ptp, interpolation='nearest', cmap=plt.cm.plasma)
     axs[1].imshow(ete, interpolation='nearest', cmap=plt.cm.plasma)
-    axs[0].set_title('{}'.format(layer_ids))
+    axs[0].set_title('{}'.format(stack))
     assert figdir, 'figdir must not be None'
     assert ord is not None
     plt.savefig(os.path.join(figdir, 'p{}'.format(ord)))
 
 
-def get_path(figdir, fn1, fn2, layers):
+def get_path(figdir, fn1, fn2, stack, channel=0):
     path = use.crt_t_fol(figdir)
-    s = ''
-    for i in layers:
-        s += '_' + str(i)
-    path = os.path.join(path, 'compare::{}-{}{}'.format(fn1, fn2, s))
+    path = os.path.join(path, 'compare::chan{}{}-{}stack{}'.format(channel, fn1, fn2, stack))
     if not os.path.exists(path):
         os.makedirs(path)
     return path
 
 class ShowNet(object):
-    def __init__(self, srcdir, ckpt_path, figdir, layer_ids, length=16384, sr=16000):
-        self.graph = build_graph(length, layer_ids)
+    def __init__(self, srcdir, ckpt_path, figdir, stack, channel=0, length=16384, sr=16000):
+        self.graph = build_graph(length, stack, channel)
         self.srcdir = srcdir
         assert ckpt_path, 'must provide a ckpt path for this model!'
         self.ckpt_path = ckpt_path
         self.figdir = figdir
         self.sr = sr
         self.length = length
-        self.layer_ids = layer_ids
+        self.stack = stack
+        self.channel = channel
 
     def compare(self, fn1, fn2):
         fp1 = os.path.join(self.srcdir, fn1 + '.wav')
@@ -84,7 +79,7 @@ class ShowNet(object):
 
         auds1 = read_file(fp1, self.length)
         auds2 = read_file(fp2, self.length)
-        figdir = get_path(self.figdir, fn1, fn2, self.layer_ids)
+        figdir = get_path(self.figdir, fn1, fn2, self.stack, self.channel)
 
         session_config = tf.ConfigProto(allow_soft_placement=True)
         session_config.gpu_options.allow_growth = True
@@ -96,7 +91,7 @@ class ShowNet(object):
             embeds2 = [get_embeds(self.graph, sess, aud) for aud in auds2]
 
             for i in range(min(len(embeds1), len(embeds2))):
-                compare2embeds(embeds1[i], embeds2[i], self.layer_ids, figdir, i)
+                compare2embeds(embeds1[i], embeds2[i], self.stack, figdir, i)
 
 
 def main():
@@ -104,12 +99,13 @@ def main():
     parser.add_argument('filenames', nargs='*')
     parser.add_argument('--srcdir', nargs='?', default='./data/src')
     parser.add_argument('--figdir', nargs='?', default='./data/fig')
-    parser.add_argument('--layers', nargs='*', default=[i for i in range(10,20)], type=int)
+    parser.add_argument('--stack', nargs='*', default=1, type=int)
+    parser.add_argument('--channel', nargs='?', default=1, type=int)
     parser.add_argument('--ckpt_path', nargs='?', default='./nsynth/model/wavenet-ckpt/model.ckpt-200000')
 
     args = parser.parse_args()
 
-    net = ShowNet(args.srcdir, args.ckpt_path, args.figdir, args.layers)
+    net = ShowNet(args.srcdir, args.ckpt_path, args.figdir, args.stack, args.channel)
     net.compare(args.filenames[0], args.filenames[1])
 
 

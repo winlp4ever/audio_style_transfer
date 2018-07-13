@@ -12,12 +12,12 @@ ins = ['bass', 'brass', 'flute', 'guitar', 'keyboard', 'mallet', 'organ', 'reed'
        'vocal']
 
 abbrevs = {'length': 'l', 'layers': 'lyr', 'n_components': 'cpn', 'examples': 'ex', 'epochs': 'ep', 'qualities': 'qult',
-           'lambd': 'lbd', 'batch_size': 'batch'}
+           'lambd': 'lbd', 'batch_size': 'btch', 'stack': 'stk'}
 
 
 def gt_s_path(suppath, exe_file=None, **kwargs):
     path = ''
-    for name, value in kwargs.items():
+    for name, value in sorted(kwargs.items()):
         if name == 'ins' and value is not None:
             assert len(value) == 2
             path += '{}2{}_'.format(ins[value[0]], ins[value[1]])
@@ -31,6 +31,9 @@ def gt_s_path(suppath, exe_file=None, **kwargs):
 
         elif name == 'filename':
             path = value + '_' + path
+
+        elif name == 'cont_fn' or name == 'style_fn':
+            path += '-{}-'.format(value)
 
         elif not name.endswith(('dir', 'path')) and value is not None:
             if name in abbrevs.keys():
