@@ -3,13 +3,26 @@ from numpy.linalg import norm
 
 
 
-import argparse
+import tensorflow as tf
 
-parser = argparse.ArgumentParser()
-parser.add_argument('filepath', help='filepath of input signal')
-parser.add_argument('-s', '--source', help='type of source instrument', type=int)
-parser.add_argument('-t', '--target', help='type of target instrument', type=int)
+x = tf.Variable(1, dtype=tf.float32)
 
-args = parser.parse_args()
+m = tf.maximum(x, 1e-12) + tf.maximum(0.0, -x)
+y = x / m * tf.exp(m)
 
-print(args.filepath)
+loss = (y - 2) ** 2
+
+optimizer = tf.contrib.opt.ScipyOptimizerInterface(
+                loss,
+                method='L-BFGS-B',
+                options={'maxiter': 200})
+
+def loss_tracking(x_value, l):
+    print('value {} loss {}'.format(x_value, l))
+
+with tf.Session() as sess:
+    sess.run(tf.global_variables_initializer())
+
+    optimizer.minimize(sess, loss_callback=loss_tracking, fetches=[x, loss])
+
+

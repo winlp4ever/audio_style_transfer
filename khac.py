@@ -65,10 +65,9 @@ class GatysNet(object):
         stl = []
         for i in range(60):
             embeds = tf.stack([config.extracts[j][0, :, i] for j in range(10, 20)], axis=1)
-            embeds = tf.matmul(embeds, embeds, transpose_a=True)
-            m = tf.reduce_max(embeds)
-            m = tf.maximum(m, 1e-10)
-            stl.append(embeds / m)
+            embeds = tf.matmul(embeds, embeds, transpose_a=True) / length
+            embeds = tf.nn.l2_normalize(embeds)
+            stl.append(embeds)
 
         style_embeds = tf.stack(stl, axis=0)
 
@@ -92,7 +91,7 @@ class GatysNet(object):
         return sess.run(embeds,
                  feed_dict={self.graph['quantized_input']: use.mu_law_numpy(aud)})
 
-    def get_style_phi(self, sess, filename, max_examples=50, show_mat=True):
+    def get_style_phi(self, sess, filename, max_examples=3, show_mat=True):
         print('load file ...')
         audio, _ = librosa.load(filename, sr=self.sr)
         I = []
@@ -115,10 +114,7 @@ class GatysNet(object):
 
         with tf.name_scope('loss'):
             content_loss = tf.nn.l2_loss(self.embeds_c - phi_c)
-            style_loss = 0
-            for i in range(phi_s.shape[0]):
-                p_s = softmax(phi_s[i])
-                style_loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=self.embeds_s[i], labels=p_s))
+            style_loss = tf.nn.l2_loss(self.embeds_s - phi_s)
             style_loss *= 1e3
             regularizer = tf.nn.l2_loss(self.graph['quantized_input'])
 
