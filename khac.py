@@ -14,28 +14,13 @@ tf.logging.set_verbosity(tf.logging.WARN)
 
 plt.switch_backend('agg')
 
-def show_gram(mats, ep=None, figdir=None):
-    nb_ch = mats.shape[0]
-    fig, axs = plt.subplots(10, 1, figsize=(20, 10 * 10))
-    for i in range(10):
-        axs[i].imshow(mats[i], interpolation='nearest', cmap=plt.cm.plasma)
-        axs[i].set_title('channel {}'.format(i))
-    if ep is not None:
-        plt.savefig(os.path.join(figdir, 'gram-ep{}.png'.format(ep)), dpi=100)
-    else:
-        plt.savefig(os.path.join(figdir, 'gram-style.png'), dpi=100)
-
-def softmax(tab):
-    out = np.exp(tab)
-    return out / np.sum(out)
-
-
 class GatysNet(object):
     def __init__(self,
                  savepath='./data/out',
                  checkpoint_path='./nsynth/model/wavenet-ckpt/model.ckpt-200000',
                  logdir='./log',
                  figdir='./data/fig',
+                 stack=1,
                  batch_size=16384,
                  sr=16000,
                  cont_lyr_ids=[29]):
@@ -46,14 +31,14 @@ class GatysNet(object):
         self.batch_size = batch_size
         self.sr = sr
         self.cont_lyr_ids = cont_lyr_ids
-        self.graph, self.embeds_c, self.embeds_s = self.build(batch_size, cont_lyr_ids)
+        self.graph, self.embeds_c, self.embeds_s = self.build(batch_size, cont_lyr_ids, stack)
 
     @staticmethod
-    def build(length, cont_lyr_ids):
+    def build(length, cont_lyr_ids, stack):
         config = Cfg()
         with tf.device("/gpu:0"):
             x = tf.Variable(
-                initial_value=np.zeros([1, length]),
+                initial_value=np.zeros([1, length]) + 1e-12,
                 trainable=True,
                 name='regenerated_wav',
                 dtype=tf.float32
@@ -64,7 +49,7 @@ class GatysNet(object):
         cont_embeds = tf.concat([config.extracts[i] for i in cont_lyr_ids], axis=2)[0]
         stl = []
         for i in range(60):
-            embeds = tf.stack([config.extracts[j][0, :, i] for j in range(10, 20)], axis=1)
+            embeds = tf.stack([config.extracts[j][0, :, i] for j in range(stack * 10, stack * 10 + 10)], axis=1)
             embeds = tf.matmul(embeds, embeds, transpose_a=True) / length
             embeds = tf.nn.l2_normalize(embeds)
             stl.append(embeds)
@@ -105,7 +90,7 @@ class GatysNet(object):
 
         phi = np.mean(I, axis=0)
         if show_mat:
-            show_gram(phi, figdir=self.figdir)
+            use.show_gram(phi, figdir=self.figdir)
         return phi
 
     def l_bfgs(self, sess, phi_c, phi_s, epochs, lambd, gamma):
@@ -115,9 +100,12 @@ class GatysNet(object):
         with tf.name_scope('loss'):
             content_loss = tf.nn.l2_loss(self.embeds_c - phi_c)
             style_loss = tf.nn.l2_loss(self.embeds_s - phi_s)
-            style_loss *= 1e3
-            regularizer = tf.nn.l2_loss(self.graph['quantized_input'])
+            style_loss *= 1e5
 
+            a = use.inv_mu_law(self.graph['quantized_input'][0])
+            regularizer = tf.contrib.signal.stft(a, frame_length=1024, frame_step=512, name='stft')
+            regularizer = tf.reduce_mean(use.abs(tf.real(regularizer)) + use.abs(tf.imag(regularizer)))
+            regularizer *= 1e5
             loss = content_loss + lambd * style_loss + gamma * regularizer
 
             tf.summary.scalar('content_loss', content_loss)
@@ -156,11 +144,15 @@ class GatysNet(object):
             audio = sess.run(self.graph['quantized_input'])
             audio = use.inv_mu_law_numpy(audio)
 
+            audio_test = sess.run(a)
+
             sp = os.path.join(self.savepath, 'ep-{}.wav'.format(ep))
             librosa.output.write_wav(sp, audio[0] / np.max(audio[0]), sr=self.sr)
+            sp = os.path.join(self.savepath, 'ep-test-{}.wav'.format(ep))
+            librosa.output.write_wav(sp, audio_test / np.max(audio_test), sr=self.sr)
 
             gram = sess.run(self.embeds_s)
-            show_gram(gram, ep, self.figdir)
+            use.show_gram(gram, ep, self.figdir)
 
     def run(self, cont_file, style_file, epochs, lambd=0.1, gamma=0.1):
         session_config = tf.ConfigProto(allow_soft_placement=True)
@@ -186,6 +178,7 @@ def main():
     parser.add_argument('--epochs', nargs='?', type=int, default=100)
     parser.add_argument('--batch_size', nargs='?', type=int, default=16384)
     parser.add_argument('--sr', nargs='?', type=int, default=16000)
+    parser.add_argument('--stack', nargs='?', type=int, default=1)
     parser.add_argument('--cont_lyrs', nargs='*', type=int, default=[29])
     parser.add_argument('--lambd', nargs='?', type=float, default=0.1)
     parser.add_argument('--gamma', nargs='?', type=float, default=0.00)
@@ -204,7 +197,7 @@ def main():
 
     content, style = map(lambda name: os.path.join(args.dir, name) + '.wav', [args.cont_fn, args.style_fn])
 
-    test = GatysNet(savepath, args.ckpt_path, logdir, figdir, args.batch_size, args.sr, args.cont_lyrs)
+    test = GatysNet(savepath, args.ckpt_path, logdir, figdir, args.stack, args.batch_size, args.sr, args.cont_lyrs)
     test.run(content, style, epochs=args.epochs, lambd=args.lambd, gamma=args.gamma)
 
 

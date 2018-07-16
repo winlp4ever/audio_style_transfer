@@ -79,7 +79,11 @@ class Cfg(object):
         mu = 255
 
         x = inputs['wav']
-        x_quantized = tf.sign(x) * tf.log(1 + mu * tf.abs(x)) / np.log(1 + mu)
+
+        abs_x = tf.maximum(x, 1e-12) + tf.maximum(0.0, -x)
+        sign_x = x / abs_x
+
+        x_quantized = sign_x * tf.log(1 + mu * abs_x) / np.log(1 + mu)
         x_scaled = x_quantized
         x_scaled = tf.expand_dims(x_scaled, 2)
 

@@ -106,7 +106,7 @@ class Cfg(object):
 
             # ADD-----
             d_enc_ = d_enc
-            self.extracts.append(d_enc_)
+            #self.extracts.append(d_enc_)
             # --------
 
             enc += masked.conv1d(
@@ -114,6 +114,9 @@ class Cfg(object):
                 num_filters=ae_width,
                 filter_length=1,
                 name='ae_res_%d' % (num_layer + 1))
+            self.extracts.append(enc)
+
+
 
         enc_ = enc
         self.extracts.append(enc_)

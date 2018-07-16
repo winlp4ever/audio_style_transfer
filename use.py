@@ -77,10 +77,17 @@ def inv_mu_law_numpy(x, mu=255.0):
     out = np.where(np.equal(x, 0), x, out)
     return out
 
+def abs(x):
+    return tf.maximum(x, 1e-12) + tf.maximum(0.0, -x)
+
+def sign(x):
+    out = tf.where(tf.less_equal(tf.abs(x), 1e-12), tf.zeros_like(x), x)
+    return out / abs(x)
+
 def inv_mu_law(x, mu=255):
     x = tf.cast(x, tf.float32)
     out = (x + 0.5) * 2. / (mu + 1)
-    out = tf.sign(out) / mu * ((1 + mu) ** tf.abs(out) - 1)
+    out = sign(out) / mu * ((1 + mu) ** abs(out) - 1)
     out = tf.where(tf.equal(x, 0), x, out)
     return out
 
@@ -202,3 +209,16 @@ def vis_mats(phis, phit, layer_ids, figdir=None, srcname=None, trgname=None):
         plt.savefig(os.path.join(figdir, 'mats_plt.png'), dpi=150)
     else:
         plt.show()
+
+def show_gram(mats, ep=None, figdir=None):
+    nb_chnnls = mats.shape[0]
+
+    fig, axs = plt.subplots(10, nb_chnnls // 10, figsize=(12 * nb_chnnls // 10, 100))
+    for i in range(10):
+        for j in range(nb_chnnls // 10):
+            axs[i, j].imshow(mats[i + j * 10], interpolation='nearest', cmap=plt.cm.plasma)
+            axs[i, j].set_title('channel {}'.format(i))
+    if ep is not None:
+        plt.savefig(os.path.join(figdir, 'gram-ep{}.png'.format(ep)), dpi=50)
+    else:
+        plt.savefig(os.path.join(figdir, 'gram-style.png'), dpi=50)

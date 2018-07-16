@@ -1,14 +1,15 @@
 from scipy.io import wavfile
 from numpy.linalg import norm
 
-
-
+import use
+import numpy as np
 import tensorflow as tf
 
-x = tf.Variable(1, dtype=tf.float32)
+x = tf.Variable(np.array([1, 2]), dtype=tf.float32)
 
 m = tf.maximum(x, 1e-12) + tf.maximum(0.0, -x)
-y = x / m * tf.exp(m)
+#y = x / m * tf.log(tf.real(m))
+y = use.inv_mu_law(x)
 
 loss = (y - 2) ** 2
 
