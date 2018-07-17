@@ -105,16 +105,16 @@ class Cfg(object):
             d_enc = tf.nn.relu(d_enc)
 
             # ADD-----
-            d_enc_ = d_enc
-            #self.extracts.append(d_enc_)
+            self.extracts.append(d_enc)
             # --------
-
-            enc += masked.conv1d(
+            d_enc = masked.conv1d(
                 d_enc,
                 num_filters=ae_width,
                 filter_length=1,
                 name='ae_res_%d' % (num_layer + 1))
-            self.extracts.append(enc)
+            #self.extracts.append(d_enc)
+
+            enc += d_enc
 
 
 

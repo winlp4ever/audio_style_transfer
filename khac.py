@@ -46,15 +46,15 @@ class GatysNet(object):
 
             graph = config.build({'quantized_wav': x}, is_training=True)
 
-        cont_embeds = tf.concat([config.extracts[i] for i in cont_lyr_ids], axis=2)[0]
-        stl = []
-        for i in range(60):
-            embeds = tf.stack([config.extracts[j][0, :, i] for j in range(stack * 10, stack * 10 + 10)], axis=1)
-            embeds = tf.matmul(embeds, embeds, transpose_a=True) / length
-            embeds = tf.nn.l2_normalize(embeds)
-            stl.append(embeds)
+            cont_embeds = tf.concat([config.extracts[i] for i in cont_lyr_ids], axis=2)[0]
+            stl = []
+            for i in range(60):
+                embeds = tf.stack([config.extracts[j][0, :, i] for j in range(stack * 10, stack * 10 + 10)], axis=1)
+                embeds = tf.matmul(embeds, embeds, transpose_a=True) / length
+                embeds = tf.nn.l2_normalize(embeds)
+                stl.append(embeds)
 
-        style_embeds = tf.stack(stl, axis=0)
+            style_embeds = tf.stack(stl, axis=0)
 
         return graph, cont_embeds, style_embeds
 
@@ -100,12 +100,12 @@ class GatysNet(object):
         with tf.name_scope('loss'):
             content_loss = tf.nn.l2_loss(self.embeds_c - phi_c)
             style_loss = tf.nn.l2_loss(self.embeds_s - phi_s)
-            style_loss *= 1e5
+            style_loss *= 1e2
 
             a = use.inv_mu_law(self.graph['quantized_input'][0])
             regularizer = tf.contrib.signal.stft(a, frame_length=1024, frame_step=512, name='stft')
             regularizer = tf.reduce_mean(use.abs(tf.real(regularizer)) + use.abs(tf.imag(regularizer)))
-            regularizer *= 1e5
+            regularizer *= 1e3
             loss = content_loss + lambd * style_loss + gamma * regularizer
 
             tf.summary.scalar('content_loss', content_loss)
@@ -147,9 +147,9 @@ class GatysNet(object):
             audio_test = sess.run(a)
 
             sp = os.path.join(self.savepath, 'ep-{}.wav'.format(ep))
-            librosa.output.write_wav(sp, audio[0] / np.max(audio[0]), sr=self.sr)
+            librosa.output.write_wav(sp, audio[0] / np.mean(audio[0]), sr=self.sr)
             sp = os.path.join(self.savepath, 'ep-test-{}.wav'.format(ep))
-            librosa.output.write_wav(sp, audio_test / np.max(audio_test), sr=self.sr)
+            librosa.output.write_wav(sp, audio_test / np.mean(audio_test), sr=self.sr)
 
             gram = sess.run(self.embeds_s)
             use.show_gram(gram, ep, self.figdir)
@@ -176,7 +176,7 @@ def main():
     parser.add_argument('cont_fn')
     parser.add_argument('style_fn')
     parser.add_argument('--epochs', nargs='?', type=int, default=100)
-    parser.add_argument('--batch_size', nargs='?', type=int, default=16384)
+    parser.add_argument('--batch_size', nargs='?', type=int, default=16384 * 2)
     parser.add_argument('--sr', nargs='?', type=int, default=16000)
     parser.add_argument('--stack', nargs='?', type=int, default=1)
     parser.add_argument('--cont_lyrs', nargs='*', type=int, default=[29])

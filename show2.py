@@ -22,7 +22,7 @@ def build_graph(length, lyr_stack=1, nb_channels=60):
 
         stl = []
         for i in range(nb_channels):
-            embeds = tf.stack([config.extracts[j][0, :, i + 60] for j in range(lyr_stack * 10, lyr_stack * 10 + 10)], axis=1)
+            embeds = tf.stack([config.extracts[j][0, :, i] for j in range(lyr_stack * 10, lyr_stack * 10 + 10)], axis=1)
             embeds = tf.matmul(embeds, embeds, transpose_a=True) / length
             embeds = tf.nn.l2_normalize(embeds)
             stl.append(embeds)
@@ -51,7 +51,7 @@ def read_file(filename, length, sr=16000):
 
 def get_path(figdir, filename, stack):
     path = use.crt_t_fol(figdir)
-    path = os.path.join(path, 'testshow::chan60-119f:{}stack{}'.format(filename, stack))
+    path = os.path.join(path, 'show::chan0-59f:{}stack{}'.format(filename, stack))
     if not os.path.exists(path):
         os.makedirs(path)
     return path
@@ -92,12 +92,12 @@ def main():
     parser.add_argument('--srcdir', nargs='?', default='./data/src')
     parser.add_argument('--figdir', nargs='?', default='./data/fig')
     parser.add_argument('--stack', nargs='?', default=1, type=int)
-    parser.add_argument('--channel', nargs='?', default=60, type=int)
+    parser.add_argument('--channels', nargs='?', default=60, type=int)
     parser.add_argument('--ckpt_path', nargs='?', default='./nsynth/model/wavenet-ckpt/model.ckpt-200000')
 
     args = parser.parse_args()
 
-    net = ShowNet(args.srcdir, args.ckpt_path, args.figdir, args.stack, args.channel)
+    net = ShowNet(args.srcdir, args.ckpt_path, args.figdir, args.stack, args.channels)
     net.show(args.filename)
 
 
