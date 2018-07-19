@@ -99,7 +99,7 @@ def main():
     parser.add_argument('filenames', nargs='*')
     parser.add_argument('--srcdir', nargs='?', default='./data/src')
     parser.add_argument('--figdir', nargs='?', default='./data/fig')
-    parser.add_argument('--stack', nargs='*', default=1, type=int)
+    parser.add_argument('--stack', nargs='?', default=1, type=int)
     parser.add_argument('--channel', nargs='?', default=1, type=int)
     parser.add_argument('--ckpt_path', nargs='?', default='./nsynth/model/wavenet-ckpt/model.ckpt-200000')
 

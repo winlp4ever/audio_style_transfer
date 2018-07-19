@@ -1,11 +1,12 @@
-import tensorflow as tf
 import numpy as np
+from scipy.linalg import ldl
+from numpy.linalg import norm, eigh
 
-import librosa
+a = np.random.sample((128, 16000))
 
-fn = './data/ep-test-89.wav'
+u = np.dot(a, a.T) + 1e-12
 
-aud, _ = librosa.load(fn, sr=16000)
-
-aud = aud/np.mean(aud)
-librosa.output.write_wav('./data/test.wav', aud, sr=16000)
+w, v = eigh(u)
+w = np.diag(w)
+assert (np.dot(v, v.T) - np.identity(128) < 1e-10).all()
+assert (np.abs(np.dot(np.dot(v, w), v.T) - u) < 1e-10).all()

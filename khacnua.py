@@ -9,6 +9,7 @@ from mynmf import mynmf
 import time
 import argparse
 import matplotlib.pyplot as plt
+from numpy.linalg import norm, eigh
 
 tf.logging.set_verbosity(tf.logging.WARN)
 
@@ -28,19 +29,17 @@ class GatysNet(object):
                  figdir='./data/fig',
                  stack=1,
                  batch_size=16384,
-                 sr=16000,
-                 cont_lyr_ids=[29]):
+                 sr=16000):
         self.logdir = logdir
         self.savepath = savepath
         self.checkpoint_path = checkpoint_path
         self.figdir = figdir
         self.batch_size = batch_size
         self.sr = sr
-        self.cont_lyr_ids = cont_lyr_ids
-        self.graph, self.embeds_c, self.embeds_s = self.build(batch_size, cont_lyr_ids, stack)
+        self.graph, self.embeds = self.build(batch_size, stack)
 
     @staticmethod
-    def build(length, cont_lyr_ids, stack):
+    def build(length, stack):
         config = Cfg()
         with tf.device("/gpu:0"):
             x = tf.Variable(
@@ -52,18 +51,14 @@ class GatysNet(object):
 
             graph = config.build({'quantized_wav': x}, is_training=True)
 
-        with tf.device("/gpu:1"):
-            cont_embeds = tf.concat([config.extracts[i] for i in cont_lyr_ids], axis=2)[0]
             stl = []
             for i in ARR:
-                embeds = tf.stack([config.extracts[j][0, :, i] for j in range(stack * 10, stack * 10 + 10)], axis=1)
-                embeds = tf.matmul(embeds, embeds, transpose_a=True) / length
-                #embeds = tf.nn.l2_normalize(embeds)
-                stl.append(embeds)
+                embd = tf.stack([config.extracts[j][0, :, i] for j in range(stack * 10, stack * 10 + 10)], axis=0)
+                stl.append(embd)
 
-            style_embeds = tf.stack(stl, axis=0)
+            embeds = tf.stack(stl, axis=0)
 
-        return graph, cont_embeds, style_embeds
+        return graph, embeds
 
     def load_model(self, sess):
         variables = tf.global_variables()
@@ -72,64 +67,83 @@ class GatysNet(object):
         saver = tf.train.Saver(var_list=variables)
         saver.restore(sess, self.checkpoint_path)
 
-    def get_embeds(self, sess, aud, is_content=True):
+    def get_embeds(self, sess, aud):
         if len(aud.shape) == 1:
             aud = aud[: self.batch_size]
             aud = np.reshape(aud, [1, self.batch_size])
-        if is_content:
-            embeds = self.embeds_c
-        else:
-            embeds = self.embeds_s
-        return sess.run(embeds,
+
+        return sess.run(self.embeds,
                  feed_dict={self.graph['quantized_input']: use.mu_law_numpy(aud)})
 
-    def get_style_phi(self, sess, filename, max_examples=3, show_mat=True):
+    def get_style_phi(self, sess, filename, max_examples=3):
         print('load file ...')
         audio, _ = librosa.load(filename, sr=self.sr)
         I = []
         i = 0
         while i + self.batch_size <= min(len(audio), max_examples * self.batch_size):
 
-            embeds = self.get_embeds(sess, audio[i: i + self.batch_size], is_content=False)
+            embeds = self.get_embeds(sess, audio[i: i + self.batch_size])
             I.append(embeds)
             print('I size {}'.format(len(I)), end='\r', flush=True)
             i += self.batch_size
 
         phi = np.mean(I, axis=0)
-        if show_mat:
-            use.show_gram(phi, figdir=self.figdir)
+        print('style phi shape {}'.format(phi.shape))
         return phi
 
-    def l_bfgs(self, sess, phi_c, phi_s, epochs, lambd, gamma):
+    def factorise(self, phi):
+        m = np.mean(phi)
+        phi_ = phi - m
+        u = np.dot(phi_, phi_.T) + 1e-12
+        w, v = eigh(u)
+        w = np.sqrt(w)
+        return m, w, v
+
+    def matching_each(self, pc, ps, alpha=1.0):
+        mc, Dc, Ec = self.factorise(pc)
+        ms, Ds, Es = self.factorise(ps)
+
+        phic_ = np.dot(np.dot(Ec, np.diag(1 / Dc)), Ec.T)
+        phic_ = np.dot(phic_, pc - mc)
+        phisc = np.dot(np.dot(Es, np.diag(Ds)), Es.T)
+        phisc = np.dot(phisc, phic_) + ms
+        return alpha * phisc + (1 - alpha) * pc
+
+    def matching_all(self, phic, phis, alpha=1.0):
+        nb_ch = phic.shape[0]
+        phics = phis.copy()
+        for i in range(nb_ch):
+            phics[i] = self.matching_each(phic[i], phis[i], alpha=alpha)
+        return phics
+
+    def l_bfgs(self, sess, phi_sc, epochs, gamma):
         writer = tf.summary.FileWriter(logdir=self.logdir)
         #writer.add_graph(sess.graph)
 
         with tf.name_scope('loss'):
-            content_loss = tf.nn.l2_loss(self.embeds_c - phi_c)
-            style_loss = tf.nn.l2_loss(self.embeds_s - phi_s)
-            style_loss *= 1e2
+            scloss = tf.nn.l2_loss(self.embeds - phi_sc)
+            #stloss *= 1e2
 
             a = use.inv_mu_law(self.graph['quantized_input'][0])
             regularizer = tf.contrib.signal.stft(a, frame_length=1024, frame_step=512, name='stft')
             regularizer = tf.reduce_mean(use.abs(tf.real(regularizer)) + use.abs(tf.imag(regularizer)))
             regularizer *= 1e3
-            loss = content_loss + lambd * style_loss + gamma * regularizer
+            loss = scloss + gamma * regularizer
 
-            tf.summary.scalar('content_loss', content_loss)
-            tf.summary.scalar('style_loss', style_loss)
+            tf.summary.scalar('sc_loss', scloss)
             tf.summary.scalar('regularizer', regularizer)
             tf.summary.scalar('main_loss', loss)
 
         summ = tf.summary.merge_all()
 
-        def loss_tracking(loss_, cont_loss_, style_loss_, regularizer_, summ_):
+        def loss_tracking(loss_, scloss, regularizer_, summ_):
             nonlocal i_
             nonlocal i
             nonlocal ep
             nonlocal since
             if not i % 5:
-                print('Ep {0:}/{1:}-it {2:}({3:})-tlapse {4:.2f}s-loss{5:.2f}-{6:.2f}-{7:.2f}-{8:.2f}'.
-                      format(ep + 1, epochs, i, i_, time.time() - since, loss_, cont_loss_, style_loss_, regularizer_), end='\r', flush=True)
+                print('Ep {0:}/{1:}-it {2:}({3:})-tlapse {4:.2f}s-loss{5:.2f}-{6:.2f}-{7:.2f}'.
+                      format(ep + 1, epochs, i, i_, time.time() - since, loss_, scloss, regularizer_), end='\r', flush=True)
             writer.add_summary(summ_, global_step=i_ + i)
             i += 1
 
@@ -148,7 +162,7 @@ class GatysNet(object):
         for ep in range(epochs):
             i = 0
 
-            optimizer.minimize(sess, loss_callback=loss_tracking, fetches=[loss, content_loss, style_loss, regularizer, summ])
+            optimizer.minimize(sess, loss_callback=loss_tracking, fetches=[loss, scloss, regularizer, summ])
             i_ = i
             audio = sess.run(self.graph['quantized_input'])
             audio = use.inv_mu_law_numpy(audio)
@@ -156,14 +170,11 @@ class GatysNet(object):
             audio_test = sess.run(a)
 
             sp = os.path.join(self.savepath, 'ep-{}.wav'.format(ep))
-            librosa.output.write_wav(sp, audio[0] / (np.mean(audio[0]) + np.std(audio[0])), sr=self.sr)
+            librosa.output.write_wav(sp, audio[0] / np.max(audio[0]), sr=self.sr)
             #sp = os.path.join(self.savepath, 'ep-test-{}.wav'.format(ep))
             #librosa.output.write_wav(sp, audio_test / np.mean(audio_test), sr=self.sr)
 
-            gram = sess.run(self.embeds_s)
-            use.show_gram(gram, ep, self.figdir)
-
-    def run(self, cont_file, style_file, epochs, lambd=0.1, gamma=0.1):
+    def run(self, cont_file, style_file, epochs, alpha=1.0, gamma=0.1):
         session_config = tf.ConfigProto(allow_soft_placement=True)
         session_config.gpu_options.allow_growth = True
 
@@ -174,9 +185,12 @@ class GatysNet(object):
 
             phi_s = self.get_style_phi(sess, style_file)
             aud, _ = librosa.load(cont_file, sr=self.sr)
+            #aud = aud[self.batch_size: ]
             phi_c = self.get_embeds(sess, aud)
 
-            self.l_bfgs(sess, phi_c, phi_s, epochs=epochs, lambd=lambd, gamma=gamma)
+            phi_sc = self.matching_all(phi_c, phi_s, alpha=alpha)
+
+            self.l_bfgs(sess, phi_sc, epochs=epochs, gamma=gamma)
 
 
 def main():
@@ -188,8 +202,7 @@ def main():
     parser.add_argument('--batch_size', nargs='?', type=int, default=16384)
     parser.add_argument('--sr', nargs='?', type=int, default=16000)
     parser.add_argument('--stack', nargs='?', type=int, default=1)
-    parser.add_argument('--cont_lyrs', nargs='*', type=int, default=[29])
-    parser.add_argument('--lambd', nargs='?', type=float, default=0.1)
+    parser.add_argument('--alpha', nargs='?', type=float, default=1.0)
     parser.add_argument('--gamma', nargs='?', type=float, default=0.00)
 
     parser.add_argument('--ckpt_path', nargs='?', default='./nsynth/model/wavenet-ckpt/model.ckpt-200000')
@@ -201,13 +214,13 @@ def main():
 
     args = parser.parse_args()
 
-    savepath, figdir, logdir = map(lambda dir: use.gt_s_path(use.crt_t_fol(dir), 'khacsoft', **vars(args)),
+    savepath, figdir, logdir = map(lambda dir: use.gt_s_path(use.crt_t_fol(dir), 'khacnua', **vars(args)),
                                    [args.outdir, args.figdir, args.logdir])
 
     content, style = map(lambda name: os.path.join(args.dir, name) + '.wav', [args.cont_fn, args.style_fn])
 
-    test = GatysNet(savepath, args.ckpt_path, logdir, figdir, args.stack, args.batch_size, args.sr, args.cont_lyrs)
-    test.run(content, style, epochs=args.epochs, lambd=args.lambd, gamma=args.gamma)
+    test = GatysNet(savepath, args.ckpt_path, logdir, figdir, args.stack, args.batch_size, args.sr)
+    test.run(content, style, epochs=args.epochs, alpha=args.alpha, gamma=args.gamma)
 
 
 if __name__ == '__main__':

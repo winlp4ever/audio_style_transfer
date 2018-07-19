@@ -6,8 +6,15 @@ import use
 import librosa
 import argparse
 import os
+from numpy.linalg import norm
 
 plt.switch_backend('agg')
+
+ARR = [0, 5, 6, 7, 10, 21, 22, 29, 30, 32, 34, 39, 41,
+       42, 46, 47, 49, 53, 58, 59, 62, 63, 65, 66, 68, 69,
+       71, 72, 73, 74, 76, 78, 80, 81, 84, 85, 86, 87, 90,
+       93, 96, 97, 100, 101, 102, 103, 105, 107, 109, 110, 112, 113,
+       114, 119, 127]
 
 def build_graph(length, lyr_stack=1, nb_channels=60):
     config = Cfg()
@@ -21,10 +28,10 @@ def build_graph(length, lyr_stack=1, nb_channels=60):
         graph = config.build({'quantized_wav': x}, is_training=True)
 
         stl = []
-        for i in range(nb_channels):
-            embeds = tf.stack([config.extracts[j][0, :, i] for j in range(lyr_stack * 10, lyr_stack * 10 + 10)], axis=1)
+        for i in ARR:
+            embeds = tf.stack([config.extracts[j][0, :, i] for j in range(30)], axis=1)
             embeds = tf.matmul(embeds, embeds, transpose_a=True) / length
-            embeds = tf.nn.l2_normalize(embeds)
+            #embeds = tf.nn.l2_normalize(embeds)
             stl.append(embeds)
         style_embeds = tf.stack(stl, axis=0)
         graph.update({'embeds': style_embeds})
@@ -51,10 +58,20 @@ def read_file(filename, length, sr=16000):
 
 def get_path(figdir, filename, stack):
     path = use.crt_t_fol(figdir)
-    path = os.path.join(path, 'show::chan0-59f:{}stack{}'.format(filename, stack))
+    path = os.path.join(path, 'showIn::chan0-59f:{}stack{}'.format(filename, stack))
     if not os.path.exists(path):
         os.makedirs(path)
     return path
+
+def show_inten(mats, ep, figdir):
+    nb_ch = mats.shape[0]
+    print(np.shape(mats))
+    a = np.array([norm(mats[i]) for i in range(nb_ch)])
+    print(np.where(a >= 2))
+    print(np.where(a >= 2)[0].shape)
+    plt.plot(a)
+    plt.savefig(os.path.join(figdir, 'int{}'.format(ep)), dpi=100, clear=True)
+    plt.close()
 
 class ShowNet(object):
     def __init__(self, srcdir, ckpt_path, figdir, stack, channels=60, length=16384, sr=16000):
@@ -84,6 +101,7 @@ class ShowNet(object):
 
             for i in range(len(embeds)):
                 use.show_gram(embeds[i], i, figdir)
+                #show_inten(embeds[i], i, figdir)
 
 
 def main():

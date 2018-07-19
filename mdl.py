@@ -92,31 +92,32 @@ class Cfg(object):
             filter_length=ae_filter_length,
             name='ae_startconv')
 
-        for num_layer in range(ae_num_layers):
-            dilation = 2 ** (num_layer % ae_num_stages)
-            d_enc = tf.nn.relu(enc)
-            d_enc = masked.conv1d(
-                d_enc,
-                causal=False,
-                num_filters=ae_width,
-                filter_length=ae_filter_length,
-                dilation=dilation,
-                name='ae_dilatedconv_%d' % (num_layer + 1))
-            d_enc = tf.nn.relu(d_enc)
+        with tf.name_scope('encoder'):
+            for num_layer in range(ae_num_layers):
+                with tf.name_scope('enc-block-{}'.format(num_layer)):
+                    dilation = 2 ** (num_layer % ae_num_stages)
+                    d_enc = tf.nn.relu(enc)
+                    d_enc = masked.conv1d(
+                        d_enc,
+                        causal=False,
+                        num_filters=ae_width,
+                        filter_length=ae_filter_length,
+                        dilation=dilation,
+                        name='ae_dilatedconv_%d' % (num_layer + 1))
+                    d_enc = tf.nn.relu(d_enc)
 
-            # ADD-----
-            self.extracts.append(d_enc)
-            # --------
-            d_enc = masked.conv1d(
-                d_enc,
-                num_filters=ae_width,
-                filter_length=1,
-                name='ae_res_%d' % (num_layer + 1))
-            #self.extracts.append(d_enc)
+                    # ADD-----
+                    #self.extracts.append(d_enc)
+                    # --------
+                    d_enc = masked.conv1d(
+                        d_enc,
+                        num_filters=ae_width,
+                        filter_length=1,
+                        name='ae_res_%d' % (num_layer + 1))
+                    #self.extracts.append(d_enc)
 
-            enc += d_enc
-
-
+                    enc += d_enc
+                    self.extracts.append(enc)
 
         enc_ = enc
         self.extracts.append(enc_)
@@ -145,31 +146,33 @@ class Cfg(object):
             l, num_filters=skip_width, filter_length=1, name='skip_start')
 
         # Residual blocks with skip connections.
-        for i in range(num_layers):
-            dilation = 2 ** (i % num_stages)
-            d_enc = masked.conv1d(
-                l,
-                num_filters=2 * width,
-                filter_length=filter_length,
-                dilation=dilation,
-                name='dilatedconv_%d' % (i + 1))
-            d_enc = self._condition(d_enc,
-                                masked.conv1d(
-                                    enc,
-                                    num_filters=2 * width,
-                                    filter_length=1,
-                                    name='cond_map_%d' % (i + 1)))
+        with tf.name_scope('decoder'):
+            for i in range(num_layers):
+                with tf.name_scope('dec-block-{}'.format(i)):
+                    dilation = 2 ** (i % num_stages)
+                    d_enc = masked.conv1d(
+                        l,
+                        num_filters=2 * width,
+                        filter_length=filter_length,
+                        dilation=dilation,
+                        name='dilatedconv_%d' % (i + 1))
+                    d_enc = self._condition(d_enc,
+                                    masked.conv1d(
+                                        enc,
+                                        num_filters=2 * width,
+                                        filter_length=1,
+                                        name='cond_map_%d' % (i + 1)))
 
-            assert d_enc.get_shape().as_list()[2] % 2 == 0
-            m = d_enc.get_shape().as_list()[2] // 2
-            d_sigmoid = tf.sigmoid(d_enc[:, :, :m])
-            d_tanh = tf.tanh(d_enc[:, :, m:])
-            d_enc = d_sigmoid * d_tanh
+                    assert d_enc.get_shape().as_list()[2] % 2 == 0
+                    m = d_enc.get_shape().as_list()[2] // 2
+                    d_sigmoid = tf.sigmoid(d_enc[:, :, :m])
+                    d_tanh = tf.tanh(d_enc[:, :, m:])
+                    d_enc = d_sigmoid * d_tanh
 
-            l += masked.conv1d(
-                d_enc, num_filters=width, filter_length=1, name='res_%d' % (i + 1))
-            s += masked.conv1d(
-                d_enc, num_filters=skip_width, filter_length=1, name='skip_%d' % (i + 1))
+                    l += masked.conv1d(
+                        d_enc, num_filters=width, filter_length=1, name='res_%d' % (i + 1))
+                    s += masked.conv1d(
+                        d_enc, num_filters=skip_width, filter_length=1, name='skip_%d' % (i + 1))
 
         s = tf.nn.relu(s)
         s = masked.conv1d(s, num_filters=skip_width, filter_length=1, name='out1')

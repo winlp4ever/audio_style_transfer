@@ -212,13 +212,12 @@ def vis_mats(phis, phit, layer_ids, figdir=None, srcname=None, trgname=None):
 
 def show_gram(mats, ep=None, figdir=None):
     nb_chnnls = mats.shape[0]
-
     fig, axs = plt.subplots(10, nb_chnnls // 10, figsize=(12 * nb_chnnls // 10, 100))
     for i in range(10):
         for j in range(nb_chnnls // 10):
             axs[i, j].imshow(mats[i + j * 10], interpolation='nearest', cmap=plt.cm.plasma)
-            axs[i, j].set_title('channel {}'.format(i))
+            axs[i, j].set_title('channel {}'.format(i + 10 * j))
     if ep is not None:
-        plt.savefig(os.path.join(figdir, 'gram-ep{}.png'.format(ep)), dpi=50)
+        fig.savefig(os.path.join(figdir, 'gram-ep{}.png'.format(ep)), dpi=50)
     else:
-        plt.savefig(os.path.join(figdir, 'gram-style.png'), dpi=50)
+        fig.savefig(os.path.join(figdir, 'gram-style.png'), dpi=50)
