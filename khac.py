@@ -55,10 +55,10 @@ class GatysNet(object):
         with tf.device("/gpu:1"):
             cont_embeds = tf.concat([config.extracts[i] for i in cont_lyr_ids], axis=2)[0]
             stl = []
-            for i in ARR:
+            for i in range(128):
                 embeds = tf.stack([config.extracts[j][0, :, i] for j in range(stack * 10, stack * 10 + 10)], axis=1)
                 embeds = tf.matmul(embeds, embeds, transpose_a=True) / length
-                #embeds = tf.nn.l2_normalize(embeds)
+                embeds = tf.nn.l2_normalize(embeds)
                 stl.append(embeds)
 
             style_embeds = tf.stack(stl, axis=0)
@@ -107,7 +107,7 @@ class GatysNet(object):
         with tf.name_scope('loss'):
             content_loss = tf.nn.l2_loss(self.embeds_c - phi_c)
             style_loss = tf.nn.l2_loss(self.embeds_s - phi_s)
-            style_loss *= 1e2
+            style_loss *= 1e4
 
             a = use.inv_mu_law(self.graph['quantized_input'][0])
             regularizer = tf.contrib.signal.stft(a, frame_length=1024, frame_step=512, name='stft')
@@ -153,17 +153,17 @@ class GatysNet(object):
             audio = sess.run(self.graph['quantized_input'])
             audio = use.inv_mu_law_numpy(audio)
 
-            audio_test = sess.run(a)
+            #audio_test = sess.run(a)
 
             sp = os.path.join(self.savepath, 'ep-{}.wav'.format(ep))
-            librosa.output.write_wav(sp, audio[0] / (np.mean(audio[0]) + np.std(audio[0])), sr=self.sr)
+            librosa.output.write_wav(sp, audio[0], sr=self.sr)
             #sp = os.path.join(self.savepath, 'ep-test-{}.wav'.format(ep))
             #librosa.output.write_wav(sp, audio_test / np.mean(audio_test), sr=self.sr)
 
             gram = sess.run(self.embeds_s)
-            use.show_gram(gram, ep, self.figdir)
+            use.show_gram(gram, ep + 1, self.figdir)
 
-    def run(self, cont_file, style_file, epochs, lambd=0.1, gamma=0.1):
+    def run(self, cont_file, style_file, epochs, lambd=0.1, gamma=0.1, piece=0):
         session_config = tf.ConfigProto(allow_soft_placement=True)
         session_config.gpu_options.allow_growth = True
 
@@ -174,7 +174,10 @@ class GatysNet(object):
 
             phi_s = self.get_style_phi(sess, style_file)
             aud, _ = librosa.load(cont_file, sr=self.sr)
+            aud = aud[piece * self.batch_size:]
             phi_c = self.get_embeds(sess, aud)
+            phi = self.get_embeds(sess, aud, is_content=False)
+            use.show_gram(phi, ep=0, figdir=self.figdir)
 
             self.l_bfgs(sess, phi_c, phi_s, epochs=epochs, lambd=lambd, gamma=gamma)
 
@@ -191,6 +194,7 @@ def main():
     parser.add_argument('--cont_lyrs', nargs='*', type=int, default=[29])
     parser.add_argument('--lambd', nargs='?', type=float, default=0.1)
     parser.add_argument('--gamma', nargs='?', type=float, default=0.00)
+    parser.add_argument('--piece', nargs='?', type=int, default=0)
 
     parser.add_argument('--ckpt_path', nargs='?', default='./nsynth/model/wavenet-ckpt/model.ckpt-200000')
     parser.add_argument('--figdir', nargs='?', default='./data/fig')
@@ -207,7 +211,7 @@ def main():
     content, style = map(lambda name: os.path.join(args.dir, name) + '.wav', [args.cont_fn, args.style_fn])
 
     test = GatysNet(savepath, args.ckpt_path, logdir, figdir, args.stack, args.batch_size, args.sr, args.cont_lyrs)
-    test.run(content, style, epochs=args.epochs, lambd=args.lambd, gamma=args.gamma)
+    test.run(content, style, epochs=args.epochs, lambd=args.lambd, gamma=args.gamma, piece=args.piece)
 
 
 if __name__ == '__main__':

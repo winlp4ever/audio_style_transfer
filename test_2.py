@@ -2,11 +2,12 @@ import numpy as np
 from scipy.linalg import ldl
 from numpy.linalg import norm, eigh
 
-a = np.random.sample((128, 16000))
+import librosa
 
-u = np.dot(a, a.T) + 1e-12
 
-w, v = eigh(u)
-w = np.diag(w)
-assert (np.dot(v, v.T) - np.identity(128) < 1e-10).all()
-assert (np.abs(np.dot(np.dot(v, w), v.T) - u) < 1e-10).all()
+audio = np.zeros((16384 * 2,))
+for i in range(4):
+    aud, _ = librosa.load('./data/{}.wav'.format(i + 1), sr=16000)
+    audio[i * 8192: (i+1) * 8192] = aud
+
+librosa.output.write_wav('./data/pach-bongo-24.wav', audio/np.max(audio), sr=16000)
