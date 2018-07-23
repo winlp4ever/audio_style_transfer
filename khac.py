@@ -85,7 +85,7 @@ class GatysNet(object):
 
     def get_style_phi(self, sess, filename, max_examples=3, show_mat=True):
         print('load file ...')
-        audio, _ = librosa.load(filename, sr=self.sr)
+        audio, _ = use.load_audio(filename, sr=self.sr, audio_channel=0)
         I = []
         i = 0
         while i + self.batch_size <= min(len(audio), max_examples * self.batch_size):
@@ -163,7 +163,7 @@ class GatysNet(object):
             gram = sess.run(self.embeds_s)
             use.show_gram(gram, ep + 1, self.figdir)
 
-    def run(self, cont_file, style_file, epochs, lambd=0.1, gamma=0.1, piece=0):
+    def run(self, cont_file, style_file, epochs, lambd=0.1, gamma=0.1, piece=0, audio_channel=0):
         session_config = tf.ConfigProto(allow_soft_placement=True)
         session_config.gpu_options.allow_growth = True
 
@@ -173,7 +173,7 @@ class GatysNet(object):
             self.load_model(sess)
 
             phi_s = self.get_style_phi(sess, style_file)
-            aud, _ = librosa.load(cont_file, sr=self.sr)
+            aud, _ = use.load_audio(cont_file, sr=self.sr, audio_channel=audio_channel)
             aud = aud[piece * self.batch_size:]
             phi_c = self.get_embeds(sess, aud)
             phi = self.get_embeds(sess, aud, is_content=False)

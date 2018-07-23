@@ -52,7 +52,7 @@ class GatysNet(object):
             graph = config.build({'quantized_wav': x}, is_training=True)
 
             stl = []
-            for i in ARR:
+            for i in range(128):
                 embd = tf.stack([config.extracts[j][0, :, i] for j in range(stack * 10, stack * 10 + 10)], axis=0)
                 stl.append(embd)
 
@@ -77,7 +77,7 @@ class GatysNet(object):
 
     def get_style_phi(self, sess, filename, max_examples=3):
         print('load file ...')
-        audio, _ = librosa.load(filename, sr=self.sr)
+        audio, _ = use.load_audio(filename, sr=self.sr, audio_channel=0)
         I = []
         i = 0
         while i + self.batch_size <= min(len(audio), max_examples * self.batch_size):
@@ -174,7 +174,7 @@ class GatysNet(object):
             #sp = os.path.join(self.savepath, 'ep-test-{}.wav'.format(ep))
             #librosa.output.write_wav(sp, audio_test / np.mean(audio_test), sr=self.sr)
 
-    def run(self, cont_file, style_file, epochs, alpha=1.0, gamma=0.1):
+    def run(self, cont_file, style_file, epochs, alpha=1.0, gamma=0.1, piece=0):
         session_config = tf.ConfigProto(allow_soft_placement=True)
         session_config.gpu_options.allow_growth = True
 
@@ -184,8 +184,8 @@ class GatysNet(object):
             self.load_model(sess)
 
             phi_s = self.get_style_phi(sess, style_file)
-            aud, _ = librosa.load(cont_file, sr=self.sr)
-            #aud = aud[self.batch_size: ]
+            aud, _ = use.load_audio(cont_file, sr=self.sr, audio_channel=0)
+            aud = aud[self.batch_size * piece: ]
             phi_c = self.get_embeds(sess, aud)
 
             phi_sc = self.matching_all(phi_c, phi_s, alpha=alpha)
@@ -204,6 +204,7 @@ def main():
     parser.add_argument('--stack', nargs='?', type=int, default=1)
     parser.add_argument('--alpha', nargs='?', type=float, default=1.0)
     parser.add_argument('--gamma', nargs='?', type=float, default=0.00)
+    parser.add_argument('--piece', nargs='?', type=int, default=0)
 
     parser.add_argument('--ckpt_path', nargs='?', default='./nsynth/model/wavenet-ckpt/model.ckpt-200000')
     parser.add_argument('--figdir', nargs='?', default='./data/fig')
@@ -220,7 +221,7 @@ def main():
     content, style = map(lambda name: os.path.join(args.dir, name) + '.wav', [args.cont_fn, args.style_fn])
 
     test = GatysNet(savepath, args.ckpt_path, logdir, figdir, args.stack, args.batch_size, args.sr)
-    test.run(content, style, epochs=args.epochs, alpha=args.alpha, gamma=args.gamma)
+    test.run(content, style, epochs=args.epochs, alpha=args.alpha, gamma=args.gamma, piece=args.piece)
 
 
 if __name__ == '__main__':

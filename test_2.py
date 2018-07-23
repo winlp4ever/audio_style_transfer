@@ -10,4 +10,4 @@ for i in range(4):
     aud, _ = librosa.load('./data/{}.wav'.format(i + 1), sr=16000)
     audio[i * 8192: (i+1) * 8192] = aud
 
-librosa.output.write_wav('./data/pach-bongo-24.wav', audio/np.max(audio), sr=16000)
+librosa.output.write_wav('./data/pachel-orchestra-24.wav', audio/np.max(audio), sr=16000)

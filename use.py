@@ -114,6 +114,7 @@ def compare_2_matrix(ws, wt, figdir, save_matrices=False):
 
     np.save(os.path.join(figdir,'ws'), arr=ws)
     np.save(os.path.join(figdir,'wt'), arr=wt)
+    plt.close()
 
 
 def transform(enc, ws, wt, n_components, figdir=None):
@@ -209,6 +210,7 @@ def vis_mats(phis, phit, layer_ids, figdir=None, srcname=None, trgname=None):
         plt.savefig(os.path.join(figdir, 'mats_plt.png'), dpi=150)
     else:
         plt.show()
+    plt.close()
 
 def show_gram(mats, ep=None, figdir=None):
     nb_chnnls = mats.shape[0]
@@ -221,3 +223,11 @@ def show_gram(mats, ep=None, figdir=None):
         fig.savefig(os.path.join(figdir, 'gram-ep{}.png'.format(ep)), dpi=50)
     else:
         fig.savefig(os.path.join(figdir, 'gram-style.png'), dpi=50)
+    plt.close()
+
+def load_audio(fn, sr, audio_channel):
+    audio, sr = librosa.load(fn, sr=sr, mono=False)
+    if len(audio.shape) > 1:
+        return audio[audio_channel], sr
+    else:
+        return audio, sr
