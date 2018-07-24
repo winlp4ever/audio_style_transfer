@@ -29,7 +29,8 @@ class GatysNet(object):
                  stack=1,
                  batch_size=16384,
                  sr=16000,
-                 cont_lyr_ids=[29]):
+                 cont_lyr_ids=[29],
+                 nb_channels=60):
         self.logdir = logdir
         self.savepath = savepath
         self.checkpoint_path = checkpoint_path
@@ -37,10 +38,10 @@ class GatysNet(object):
         self.batch_size = batch_size
         self.sr = sr
         self.cont_lyr_ids = cont_lyr_ids
-        self.graph, self.embeds_c, self.embeds_s = self.build(batch_size, cont_lyr_ids, stack)
+        self.graph, self.embeds_c, self.embeds_s = self.build(batch_size, cont_lyr_ids, stack, nb_channels)
 
     @staticmethod
-    def build(length, cont_lyr_ids, stack):
+    def build(length, cont_lyr_ids, stack, nb_channels):
         config = Cfg()
         with tf.device("/gpu:0"):
             x = tf.Variable(
@@ -55,7 +56,7 @@ class GatysNet(object):
         with tf.device("/gpu:1"):
             cont_embeds = tf.concat([config.extracts[i] for i in cont_lyr_ids], axis=2)[0]
             stl = []
-            for i in range(128):
+            for i in range(nb_channels):
                 embeds = tf.stack([config.extracts[j][0, :, i] for j in range(stack * 10, stack * 10 + 10)], axis=1)
                 embeds = tf.matmul(embeds, embeds, transpose_a=True) / length
                 embeds = tf.nn.l2_normalize(embeds)
@@ -195,6 +196,7 @@ def main():
     parser.add_argument('--lambd', nargs='?', type=float, default=0.1)
     parser.add_argument('--gamma', nargs='?', type=float, default=0.00)
     parser.add_argument('--piece', nargs='?', type=int, default=0)
+    parser.add_argument('--channels', nargs='?', type=int, default=128)
 
     parser.add_argument('--ckpt_path', nargs='?', default='./nsynth/model/wavenet-ckpt/model.ckpt-200000')
     parser.add_argument('--figdir', nargs='?', default='./data/fig')
@@ -210,7 +212,7 @@ def main():
 
     content, style = map(lambda name: os.path.join(args.dir, name) + '.wav', [args.cont_fn, args.style_fn])
 
-    test = GatysNet(savepath, args.ckpt_path, logdir, figdir, args.stack, args.batch_size, args.sr, args.cont_lyrs)
+    test = GatysNet(savepath, args.ckpt_path, logdir, figdir, args.stack, args.batch_size, args.sr, args.cont_lyrs, args.channels)
     test.run(content, style, epochs=args.epochs, lambd=args.lambd, gamma=args.gamma, piece=args.piece)
 
 
