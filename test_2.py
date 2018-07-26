@@ -6,8 +6,8 @@ import librosa
 
 
 audio = np.zeros((16384 * 2,))
-for i in range(4):
+for i in range(2):
     aud, _ = librosa.load('./data/{}.wav'.format(i + 1), sr=16000)
-    audio[i * 8192: (i+1) * 8192] = aud
+    audio[i * 8192 * 2: (i+1) * 8192 * 2] = aud
 
-librosa.output.write_wav('./data/pachel-opera-24-500-100.wav', audio/np.max(audio), sr=16000)
+librosa.output.write_wav('./data/pachel-crickets-64chnnls.wav', audio/np.max(audio), sr=16000)

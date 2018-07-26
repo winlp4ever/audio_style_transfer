@@ -9,6 +9,7 @@ matplotlib.use('agg')
 from matplotlib import pyplot as plt
 import scipy.io.wavfile as wav
 from numpy.lib import stride_tricks
+import os
 
 """ short time fourier transform of audio signal """
 def stft(sig, frameSize, overlapFac=0.5, window=np.hanning):
@@ -59,7 +60,7 @@ def logscale_spec(spec, sr=44100, factor=20.):
 """ plot spectrogram"""
 def plotstft(audiopath, binsize=2**10, plotpath=None, colormap="jet"):
     samplerate, samples = wav.read(audiopath)
-    s = stft(samples[:25600], binsize)
+    s = stft(samples, binsize)
 
     sshow, freq = logscale_spec(s, factor=1.0, sr=samplerate)
     ims = 20.*np.log10(np.abs(sshow)/10e-6) # amplitude to decibel
@@ -88,7 +89,11 @@ def plotstft(audiopath, binsize=2**10, plotpath=None, colormap="jet"):
     plt.clf()
 
 if __name__ == '__main__':
-    plotstft('./test/src/flute.wav', plotpath='./test/src/fig/flute.png')
-    plotstft('./test/src/bass.wav', plotpath='./test/src/fig/bass.png')
-    plotstft('./test/src/organ.wav', plotpath='./test/src/fig/organ.png')
-    plotstft('./test/src/origin.wav', plotpath='./test/src/fig/origin.png')
+    figdir = './data/fig'
+    srcdir = './data/results'
+    f = lambda fn: os.path.join(srcdir, fn + '.wav')
+    g = lambda fn: os.path.join(figdir, fn + '.png')
+    plotstft(f('pachelbel2cat-milk-2secs-lmbd500.0-gmm0.0-stk0-chnnls64-lyr[29]'), plotpath=g('pachelbel2cat-milk-2secs-lmbd500.0-gmm0.0-stk0-chnnls64-lyr[29]'))
+    plotstft(f('pachelbel2cat-milk-2secs-lmbd500.0-gmm0.0-stk0-chnnls128-lyr[29]'), plotpath=g('pachelbel2cat-milk-2secs-lmbd500.0-gmm0.0-stk0-chnnls128-lyr[29]'))
+    #plotstft(f('pachel-cat-64chnnls'), plotpath=g('pachel-cat-64chnnls'))
+    #plotstft(f('pachel-crickets-64chnnls'), plotpath=g('pachel-crickets-64chnnls'))

@@ -35,7 +35,7 @@ def gt_s_path(suppath, exe_file=None, **kwargs):
         elif name == 'cont_fn' or name == 'style_fn':
             path += '-{}-'.format(value)
 
-        elif not name.endswith(('dir', 'path')) and value is not None:
+        elif not name.endswith(('dir', 'path', 'pieces')) and value is not None:
             if name in abbrevs.keys():
                 name = abbrevs[name]
             if isinstance(value, (list, tuple)):
