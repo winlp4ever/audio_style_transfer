@@ -56,15 +56,12 @@ class GatysNet(object):
             graph = config.build({'quantized_wav': x}, is_training=True)
 
             cont_embeds = tf.concat([config.extracts[i][:,:,:cnt_channels] for i in cont_lyr_ids], axis=2)[0]
-            stl = []
-            for i in range(nb_channels):
-                embeds = tf.stack([config.extracts[j][0, :, i] for j in range(stack * 10, stack * 10 + 10)], axis=1)
-                embeds = tf.matmul(embeds, embeds, transpose_a=True) / length
-                embeds = tf.nn.l2_normalize(embeds)
-                stl.append(embeds)
 
-            style_embeds = tf.stack(stl, axis=0)
+            stl = tf.concat([config.extracts[i] for i in range(stack * 10, stack * 10 + 10)], axis=0)
+            stl = tf.transpose(stl, perm=[2, 0, 1])
 
+            style_embeds = tf.matmul(stl, tf.transpose(stl, perm=[0, 2, 1]))
+            style_embeds = tf.nn.l2_normalize(style_embeds, axis=(1, 2))
         return graph, cont_embeds, style_embeds
 
     def load_model(self, sess):
@@ -162,15 +159,15 @@ class GatysNet(object):
 
             #audio_test = sess.run(a)
 
-            #sp = os.path.join(self.savepath, 'ep-{}.wav'.format(ep))
-            #librosa.output.write_wav(sp, audio[0], sr=self.sr)
+            sp = os.path.join(self.savepath, 'ep-{}.wav'.format(ep))
+            librosa.output.write_wav(sp, audio[0] / np.max(audio), sr=self.sr)
             #sp = os.path.join(self.savepath, 'ep-test-{}.wav'.format(ep))
             #librosa.output.write_wav(sp, audio_test / np.mean(audio_test), sr=self.sr)
             if not i % 10:
                 gram = sess.run(self.embeds_s)
                 use.show_gram(gram, ep + 1, self.figdir)
 
-    def run(self, cont_file, style_file, epochs, lambd=0.1, gamma=0.1, piece=0, audio_channel=0):
+    def run(self, cont_file, style_file, epochs, lambd=0.1, gamma=0.1, audio_channel=0):
         session_config = tf.ConfigProto(allow_soft_placement=True)
         session_config.gpu_options.allow_growth = True
 
@@ -181,7 +178,6 @@ class GatysNet(object):
 
             phi_s = self.get_style_phi(sess, style_file)
             aud, _ = use.load_audio(cont_file, sr=self.sr, audio_channel=audio_channel)
-            aud = aud[piece * self.batch_size // 2: (piece + 2) * self.batch_size // 2]
             phi_c = self.get_embeds(sess, aud)
             phi = self.get_embeds(sess, aud, is_content=False)
             use.show_gram(phi, ep=0, figdir=self.figdir)
@@ -198,7 +194,7 @@ def get_fpath(fn, args):
     return os.path.join(args.dir, fn) + '.wav'
 
 
-def piece_work(piece, args):
+def piece_work(args):
     savepath, figdir, logdir = map(lambda dir: get_dir(dir, args),
                                    [args.outdir, args.figdir, args.logdir])
 
@@ -206,7 +202,7 @@ def piece_work(piece, args):
 
     test = GatysNet(savepath, args.ckpt_path, logdir, figdir, args.stack, args.batch_size, args.sr, args.cont_lyrs,
                     args.channels, args.cnt_channels)
-    return test.run(content, style, epochs=args.epochs, lambd=args.lambd, gamma=args.gamma, piece=piece)
+    return test.run(content, style, epochs=args.epochs, lambd=args.lambd, gamma=args.gamma)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -221,7 +217,6 @@ def main():
     parser.add_argument('--lambd', nargs='?', type=float, default=0.1)
     parser.add_argument('--gamma', nargs='?', type=float, default=0.00)
     parser.add_argument('--channels', nargs='?', type=int, default=128)
-    parser.add_argument('--pieces', nargs='?', type=int, default=2)
     parser.add_argument('--cnt_channels', nargs='?', type=int, default=128)
 
     parser.add_argument('--ckpt_path', nargs='?', default='./nsynth/model/wavenet-ckpt/model.ckpt-200000')
@@ -233,22 +228,7 @@ def main():
 
     args = parser.parse_args()
 
-    width = args.batch_size
-    step = args.batch_size//2
-    audio = np.zeros((args.batch_size * args.pieces,))
-    for piece in range(2 * args.pieces - 1):
-        aud = piece_work(piece, args)
-        fade_in = np.linspace(0, 1, step)
-        fade_out = np.linspace(1, 0, step)
-        audio[piece * step: (piece + 1) * step] *= fade_out
-        audio[piece * step: (piece + 1) * step] += fade_in * aud[: step]
-        audio[(piece + 1) * step: piece * step + width] += aud[step: width]
-
-    resultDir = './data/results'
-    fname = '{}2{}-{}secs-lmbd{}-gmm{}-stk{}-chnnls{}-lyr{}-cnt{}.wav'.format(
-        args.cont_fn, args.style_fn, args.pieces * args.batch_size // args.sr, args.lambd, args.gamma, args.stack, args.channels, args.cont_lyrs[0], args.cnt_channels)
-
-    librosa.output.write_wav(os.path.join(resultDir, fname), audio / np.max(audio), sr=args.sr)
+    piece_work(args)
 
 if __name__ == '__main__':
     main()
