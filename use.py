@@ -191,38 +191,48 @@ def vis_mats(phis, phit, layer_ids, figdir=None, srcname=None, trgname=None):
         axs[0, 1].set_title(trgname)
     axs[0, 0].imshow(phis, interpolation='nearest', cmap=plt.cm.plasma, aspect='auto')
     axs[0, 1].imshow(phit, interpolation='nearest', cmap=plt.cm.plasma, aspect='auto')
-    for i in range(len(layer_ids)):
-        ps = phis[i * 128:(i + 1) * 128]
-        pt = phit[i * 128:(i + 1) * 128]
-
-        ps = np.dot(ps, ps.T)
-        pt = np.dot(pt, pt.T)
+    for i in layer_ids:
         axs[i + 1, 0].set_title('layer-{}'.format(layer_ids[i]))
-        axs[i + 1, 0].imshow(ps / np.max(ps), interpolation='nearest', cmap=plt.cm.plasma)
+        axs[i + 1, 0].imshow(phis[i], interpolation='nearest', cmap=plt.cm.plasma)
 
         axs[i + 1, 1].set_title('layer-{}'.format(layer_ids[i]))
-        im = axs[i + 1, 1].imshow(pt / np.max(pt), interpolation='nearest', cmap=plt.cm.plasma)
+        im = axs[i + 1, 1].imshow(phit[i], interpolation='nearest', cmap=plt.cm.plasma)
     fig.subplots_adjust(right=0.8)
     cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
     fig.colorbar(im, cax=cbar_ax)
     print('save mat fig ...')
     if figdir:
-        plt.savefig(os.path.join(figdir, 'mats_plt.png'), dpi=150)
+        fig.savefig(os.path.join(figdir, 'mats_plt.png'), dpi=100)
     else:
-        plt.show()
+        fig.show()
     plt.close()
 
 def show_gram(mats, ep=None, figdir=None):
+    figs_col = 8
     nb_chnnls = mats.shape[0]
-    fig, axs = plt.subplots(10, nb_chnnls // 10, figsize=(12 * nb_chnnls // 10, 100))
-    for i in range(10):
-        for j in range(nb_chnnls // 10):
-            axs[i, j].imshow(mats[i + j * 10], interpolation='nearest', cmap=plt.cm.plasma)
-            axs[i, j].set_title('channel {}'.format(i + 10 * j))
+    fig, axs = plt.subplots(figs_col, nb_chnnls // figs_col, figsize=(12 * nb_chnnls // figs_col, 10 * figs_col))
+    for i in range(figs_col):
+        for j in range(nb_chnnls // figs_col):
+            axs[i, j].imshow(mats[i + j * figs_col], interpolation='nearest', cmap=plt.cm.plasma)
+            axs[i, j].set_title('channel {}'.format(i + figs_col * j))
     if ep is not None:
         fig.savefig(os.path.join(figdir, 'gram-ep{}.png'.format(ep)), dpi=50)
     else:
         fig.savefig(os.path.join(figdir, 'gram-style.png'), dpi=50)
+    plt.close()
+
+def show_gatys_gram(mats, ep=None, figdir=None):
+    figs_col = 2
+    nb_lyrs = mats.shape[0]
+    fig, axs = plt.subplots(figs_col, nb_lyrs // figs_col, figsize=(12 * nb_lyrs // figs_col, 100))
+    for i in range(figs_col):
+        for j in range(nb_lyrs // figs_col):
+            axs[i, j].imshow(mats[i + j * figs_col], interpolation='nearest', cmap=plt.cm.plasma)
+            axs[i, j].set_title('channel {}'.format(i + figs_col * j))
+    if ep is not None:
+        fig.savefig(os.path.join(figdir, 'gram-ep{}.png'.format(ep)), dpi=50)
+    else:
+        fig.savefig(os.path.join(figdir, 'gram-style.png'), dpi=100)
     plt.close()
 
 def load_audio(fn, sr, audio_channel):

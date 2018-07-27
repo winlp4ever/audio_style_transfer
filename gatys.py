@@ -47,7 +47,13 @@ class GatysNet(object):
             graph = config.build({'quantized_wav': x}, is_training=True)
 
         cont_lyrs = tf.concat([config.extracts[i] for i in cont_lyr_ids], axis=2)[0]
-        style_lyrs = tf.concat([config.extracts[i] for i in style_lyr_ids], axis=2)[0]
+        stl = []
+        for i in style_lyr_ids:
+            emb = config.extracts[i][0]
+            emb = tf.matmul(emb, emb, transpose_a=True)
+            emb = tf.nn.l2_normalize(emb)
+            stl.append(emb)
+        style_lyrs = tf.stack(stl, axis=0)
 
         return graph, cont_lyrs, style_lyrs
 
@@ -69,7 +75,7 @@ class GatysNet(object):
         return sess.run(embeds,
                  feed_dict={self.graph['quantized_input']: use.mu_law_numpy(aud)})
 
-    def get_style_phi(self, sess, filename, max_examples=50):
+    def get_style_phi(self, sess, filename, max_examples=10, show_mats=True):
         print('load file ...')
         audio, _ = librosa.load(filename, sr=self.sr)
         I = []
@@ -81,26 +87,25 @@ class GatysNet(object):
             print('I size {}'.format(len(I)), end='\r', flush=True)
             i += self.batch_size
 
-        phi = np.concatenate(I, axis=0)
+        phi = np.mean(I, axis=0)
+        if show_mats:
+            use.show_gatys_gram(phi, figdir=self.figdir)
         return phi
 
-    def l_bfgs(self, sess, phi_c, phi_s, epochs, lambd):
+    def l_bfgs(self, sess, phi_c, phi_s, epochs, lambd, gamma):
         writer = tf.summary.FileWriter(logdir=self.logdir)
         writer.add_graph(sess.graph)
 
         with tf.name_scope('loss'):
             content_loss = tf.nn.l2_loss(self.embeds_c - phi_c)
-            style_loss = 0
-            for i in range(len(self.style_lyr_ids)):
-                E = self.embeds_s[:, 128 * i :128 * (i + 1)]
-                EtE = tf.matmul(E, E, transpose_a=True) / self.batch_size
-                P = phi_s[:, 128 * i: 128 * (i + 1)]
-                PtP = np.dot(P.T, P) / P.shape[0]
-                style_loss += tf.nn.l2_loss(EtE - PtP)
+            style_loss = tf.nn.l2_loss(self.embeds_s - phi_s)
+            style_loss *= 1e6
 
-            style_loss *= 1e5
-
-            loss = (1 - lambd) * content_loss + lambd * style_loss
+            a = use.inv_mu_law(self.graph['quantized_input'][0])
+            regularizer = tf.contrib.signal.stft(a, frame_length=1024, frame_step=512, name='stft')
+            regularizer = tf.reduce_mean(use.abs(tf.real(regularizer)) + use.abs(tf.imag(regularizer)))
+            regularizer *= 1e3
+            loss = content_loss + lambd * style_loss + gamma * regularizer
 
             tf.summary.scalar('content_loss', content_loss)
             tf.summary.scalar('style_loss', style_loss)
@@ -108,15 +113,15 @@ class GatysNet(object):
 
         summ = tf.summary.merge_all()
 
-        def loss_tracking(loss_, summ_):
+        def loss_tracking(loss_, cont_loss_, style_loss_, regularizer_, summ_):
             nonlocal s
             nonlocal i_
             nonlocal i
             nonlocal ep
             nonlocal since
             if not i % 5:
-                print('Ep: {0:}/{1:}--iter {2:} (last: {3:})--TOTAL time-lapse {4:.2f}s--loss: {5:.4f}'.
-                      format(ep + 1, epochs, i, i_, time.time() - since, loss_), end='\r', flush=True)
+                print('Ep {0:}/{1:}-it{2:}({3:})-tlapse {4:.2f}s-loss{5:.2f}-{6:.2f}-{7:.2f}-{8:.2f}'.
+                      format(ep + 1, epochs, i, i_, time.time() - since, loss_, cont_loss_, style_loss_, regularizer_), end='\r', flush=True)
             writer.add_summary(summ_, global_step=s + i)
             i += 1
 
@@ -134,7 +139,7 @@ class GatysNet(object):
         for ep in range(epochs):
             i = 0
 
-            optimizer.minimize(sess, loss_callback=loss_tracking, fetches=[loss, summ])
+            optimizer.minimize(sess, loss_callback=loss_tracking, fetches=[loss, content_loss, style_loss, regularizer, summ])
             i_ = i
             s += i
             audio = sess.run(self.graph['quantized_input'])
@@ -143,9 +148,13 @@ class GatysNet(object):
             sp = os.path.join(self.savepath, 'ep-{}.wav'.format(ep))
             librosa.output.write_wav(sp, audio[0] / np.max(audio[0]), sr=self.sr)
 
+            if not i % 1:
+                gram = sess.run(self.embeds_s)
+                use.show_gatys_gram(gram, ep + 1, self.figdir)
+
         print('\n')
 
-    def run(self, cont_file, style_file, epochs, lambd=0.1):
+    def run(self, cont_file, style_file, epochs, lambd=0.1, gamma=0.0):
         session_config = tf.ConfigProto(allow_soft_placement=True)
         session_config.gpu_options.allow_growth = True
 
@@ -157,8 +166,10 @@ class GatysNet(object):
             phi_s = self.get_style_phi(sess, style_file)
             aud, _ = librosa.load(cont_file, sr=self.sr)
             phi_c = self.get_embeds(sess, aud)
+            phi = self.get_embeds(sess, aud, is_content=False)
+            use.show_gatys_gram(phi, ep=0, figdir=self.figdir)
 
-            self.l_bfgs(sess, phi_c, phi_s, epochs=epochs, lambd=lambd)
+            self.l_bfgs(sess, phi_c, phi_s, epochs=epochs, lambd=lambd, gamma=gamma)
 
 
 def main():
@@ -173,6 +184,7 @@ def main():
     parser.add_argument('--style_lyrs', nargs='*', type=int, default=[9])
     parser.add_argument('--cont_lyrs', nargs='*', type=int, default=[29])
     parser.add_argument('--lambd', nargs='?', type=float, default=0.1)
+    parser.add_argument('--gamma', nargs='?', type=float, default=0.0)
 
     parser.add_argument('--ckpt_path', nargs='?', default='./nsynth/model/wavenet-ckpt/model.ckpt-200000')
     parser.add_argument('--figdir', nargs='?', default='./data/fig')
@@ -189,7 +201,7 @@ def main():
     content, style = map(lambda name: os.path.join(args.dir, name) + '.wav', [args.cont_fn, args.style_fn])
 
     test = GatysNet(savepath, args.ckpt_path, logdir, figdir, args.batch_size, args.sr, args.cont_lyrs, args.style_lyrs)
-    test.run(content, style, epochs=args.epochs, lambd=args.lambd)
+    test.run(content, style, epochs=args.epochs, lambd=args.lambd, gamma=args.gamma)
 
 
 if __name__ == '__main__':

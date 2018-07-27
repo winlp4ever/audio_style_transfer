@@ -9,6 +9,7 @@ from mynmf import mynmf
 import time
 import argparse
 import matplotlib.pyplot as plt
+import spectrogram
 
 tf.logging.set_verbosity(tf.logging.WARN)
 
@@ -245,10 +246,13 @@ def main():
         audio[(piece + 1) * step: piece * step + width] += aud[step: width]
 
     resultDir = './data/results'
-    fname = '{}2{}-{}secs-lmbd{}-gmm{}-stk{}-chnnls{}-lyr{}-cnt{}.wav'.format(
+    resultFig = './data/fig/results'
+    fname = '{}2{}-{}secs-lmbd{}-gmm{}-stk{}-chnnls{}-lyr{}-cnt{}'.format(
         args.cont_fn, args.style_fn, args.pieces * args.batch_size // args.sr, args.lambd, args.gamma, args.stack, args.channels, args.cont_lyrs[0], args.cnt_channels)
 
-    librosa.output.write_wav(os.path.join(resultDir, fname), audio / np.max(audio), sr=args.sr)
+    librosa.output.write_wav(os.path.join(resultDir, fname + '.wav'), audio / np.max(audio), sr=args.sr)
+    spectrogram.plotstft(os.path.join(resultDir, fname + '.wav'), plotpath=os.path.join(resultFig, fname + '.png'))
+
 
 if __name__ == '__main__':
     main()
