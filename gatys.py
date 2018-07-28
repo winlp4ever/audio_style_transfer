@@ -8,6 +8,7 @@ import librosa
 from mynmf import mynmf
 import time
 import argparse
+import spectrogram
 import matplotlib.pyplot as plt
 
 tf.logging.set_verbosity(tf.logging.WARN)
@@ -46,16 +47,12 @@ class GatysNet(object):
 
             graph = config.build({'quantized_wav': x}, is_training=True)
 
-        cont_lyrs = tf.concat([config.extracts[i] for i in cont_lyr_ids], axis=2)[0]
-        stl = []
-        for i in style_lyr_ids:
-            emb = config.extracts[i][0]
-            emb = tf.matmul(emb, emb, transpose_a=True)
-            emb = tf.nn.l2_normalize(emb)
-            stl.append(emb)
-        style_lyrs = tf.stack(stl, axis=0)
+        cont_embeds = tf.concat([config.extracts[i] for i in cont_lyr_ids], axis=2)[0]
+        style_embeds = tf.concat([config.extracts[i] for i in style_lyr_ids], axis=0)
+        style_embeds = tf.matmul(tf.transpose(style_embeds, perm=[0, 2, 1]), style_embeds)
+        style_embeds = tf.nn.l2_normalize(style_embeds, axis=[1, 2])
 
-        return graph, cont_lyrs, style_lyrs
+        return graph, cont_embeds, style_embeds
 
     def load_model(self, sess):
         variables = tf.global_variables()
@@ -148,10 +145,11 @@ class GatysNet(object):
             sp = os.path.join(self.savepath, 'ep-{}.wav'.format(ep))
             librosa.output.write_wav(sp, audio[0] / np.max(audio[0]), sr=self.sr)
 
-            if not i % 1:
+            if not ep + 1 % 10:
                 gram = sess.run(self.embeds_s)
                 use.show_gatys_gram(gram, ep + 1, self.figdir)
-
+            if not ep + 1% 100:
+                spectrogram.plotstft(sp, plotpath=os.path.join(self.figdir, 'ep_{}_spectro.png'.format(i)))
         print('\n')
 
     def run(self, cont_file, style_file, epochs, lambd=0.1, gamma=0.0):
@@ -181,8 +179,8 @@ def main():
     parser.add_argument('--epochs', nargs='?', type=int, default=100)
     parser.add_argument('--batch_size', nargs='?', type=int, default=16384)
     parser.add_argument('--sr', nargs='?', type=int, default=16000)
-    parser.add_argument('--style_lyrs', nargs='*', type=int, default=[9])
-    parser.add_argument('--cont_lyrs', nargs='*', type=int, default=[29])
+    parser.add_argument('--style_lyrs', nargs='*', type=int, default=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    parser.add_argument('--cont_lyrs', nargs='*', type=int, default=[27])
     parser.add_argument('--lambd', nargs='?', type=float, default=0.1)
     parser.add_argument('--gamma', nargs='?', type=float, default=0.0)
 

@@ -1,7 +1,13 @@
 #! /usr/bin/env bash
-for c in pachelbel female; do
-    for s in crickets cat-milk drums; do
-        python khac.py $c $s --epochs 50 --lambd 500 --gamma 0 --pieces 4 --stack 0 --batch_size 8192
-        python khac.py $c $s --epochs 50 --lambd 500 --gamma 0 --pieces 2 --stack 0 --channels 64
+for s in $( seq -1 2 ); do
+    for l in 100 50 10 0; do
+        for c in cat-milk crickets drums; do
+            command="python khac.py pachelbel $c --epochs 100 --lambd $l --gamma 10 --cont_lyrs 27 --batch_size $(( 16384 * 3 ))"
+            if [ $s -lt 0 ]; then
+                $command
+            else
+                $command --stack $s
+            fi
+        done
     done
 done
