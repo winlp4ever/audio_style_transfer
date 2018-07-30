@@ -167,7 +167,7 @@ class GatysNet(object):
             audio = sess.run(self.graph['quantized_input'])
             audio = use.inv_mu_law_numpy(audio)
 
-            audio_test = sess.run(a)
+            #audio_test = sess.run(a)
 
             sp = os.path.join(self.savepath, 'ep-{}.wav'.format(ep))
             librosa.output.write_wav(sp, audio[0] / np.max(audio[0]), sr=self.sr)

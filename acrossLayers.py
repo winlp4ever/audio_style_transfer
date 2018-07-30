@@ -92,7 +92,7 @@ class GatysNet(object):
         return sess.run(embeds,
                         feed_dict={self.graph['quantized_input']: use.mu_law_numpy(aud)})
 
-    def get_style_phi(self, sess, filename, max_examples=1, show_mat=True):
+    def get_style_phi(self, sess, filename, max_examples=3, show_mat=True):
         print('load file ...')
         audio, _ = use.load_audio(filename, sr=self.sr, audio_channel=0)
         I = []
@@ -111,14 +111,14 @@ class GatysNet(object):
     def define_loss(self, name, stl_emb, cnt_emb, lambd, gamma, gpu):
         with tf.device(gpu):
             with tf.name_scope(name):
-                content_loss = tf.nn.l2_loss(self.embeds_c - cnt_emb)
-                style_loss = tf.nn.l2_loss(self.embeds_s - stl_emb)
-                style_loss *= 1e4
+                content_loss = tf.reduce_mean(tf.losses.mean_squared_error(predictions=self.embeds_c, labels=cnt_emb))
+                style_loss = tf.reduce_mean(tf.losses.mean_squared_error(predictions=self.embeds_s, labels=stl_emb))
+                style_loss *= 1e3
 
                 a = use.inv_mu_law(self.graph['quantized_input'][0])
                 regularizer = tf.contrib.signal.stft(a, frame_length=1024, frame_step=512, name='stft')
                 regularizer = tf.reduce_mean(use.abs(tf.real(regularizer)) + use.abs(tf.imag(regularizer)))
-                regularizer *= 1e3
+                #regularizer *= 1e3
                 loss = content_loss + lambd * style_loss + gamma * regularizer
 
                 tf.summary.scalar('content_loss', content_loss)
@@ -147,7 +147,7 @@ class GatysNet(object):
             nonlocal ep
             nonlocal since
             if not i % 5:
-                print('Ep {0:}/{1:}-it {2:}({3:})-tlapse {4:.2f}s-loss{5:.2f}-{6:.2f}-{7:.2f}-{8:.2f}'.
+                print('Ep {0:}/{1:}-it {2:}({3:})-tlapse {4:.4f}s-loss{5:.4f}-{6:.4f}-{7:.4f}-{8:.4f}'.
                       format(ep + 1, epochs, i, i_, time.time() - since, loss_, cont_loss_, style_loss_, regularizer_),
                       end='\r', flush=True)
             writer.add_summary(summ_, global_step=i_ + i)
@@ -204,14 +204,14 @@ class GatysNet(object):
 
 
 def get_dir(dir, args):
-    return use.gt_s_path(use.crt_t_fol(dir), 'khacsoft', **vars(args))
+    return use.gt_s_path(use.crt_t_fol(dir), 'acrosslayers', **vars(args))
 
 
 def get_fpath(fn, args):
     return os.path.join(args.dir, fn) + '.wav'
 
 
-def piece_work(offset, args):
+def piece_work(args):
     savepath, figdir, logdir = map(lambda dir: get_dir(dir, args),
                                    [args.outdir, args.figdir, args.logdir])
 
@@ -219,7 +219,7 @@ def piece_work(offset, args):
 
     test = GatysNet(savepath, args.ckpt_path, logdir, figdir, args.stack, args.batch_size, args.sr, args.cont_lyrs,
                     args.channels, args.cnt_channels)
-    return test.run(content, style, epochs=args.epochs, lambd=args.lambd, gamma=args.gamma, start=args.start + offset / args.sr)
+    return test.run(content, style, epochs=args.epochs, lambd=args.lambd, gamma=args.gamma, start=args.start)
 
 
 def main():
@@ -237,7 +237,7 @@ def main():
     parser.add_argument('--channels', nargs='?', type=int, default=128)
     parser.add_argument('--cnt_channels', nargs='?', type=int, default=128)
     parser.add_argument('--start', nargs='?', type=float, default=1.0)
-    parser.add_argument('--duration', nargs='?', type=int, default=1)
+    #parser.add_argument('--duration', nargs='?', type=int, default=1)
 
     parser.add_argument('--ckpt_path', nargs='?', default='./nsynth/model/wavenet-ckpt/model.ckpt-200000')
     parser.add_argument('--figdir', nargs='?', default='./data/fig')
@@ -248,25 +248,7 @@ def main():
 
     args = parser.parse_args()
 
-    secs = args.duration
-    nb_pieces = int(2 * (secs * args.sr / ((args.batch_size // 4096) * 4000)) - 1)
-    step = (args.batch_size // 4096) * 2000
-    late = (args.batch_size - (args.batch_size // 4096) * 4000) // 2
-    audio = np.zeros((secs * args.sr,))
-    for piece in range(nb_pieces):
-        aud = piece_work(piece * step, args)
-        fade_in = np.linspace(0, 1, step)
-        fade_out = np.linspace(1, 0, step)
-        audio[piece * step: (piece + 1) * step] *= fade_out
-        audio[piece * step: (piece + 1) * step] += fade_in * aud[late: late + step]
-        audio[(piece + 1) * step: (piece + 2) * step] += aud[late + step: args.batch_size - late]
-
-    resultDir = './data/results'
-    fname = 'new{}2{}-{}secs-lmbd{}-gmm{}-stk{}-chnnls{}-lyr{}-cnt{}.wav'.format(
-        args.cont_fn, args.style_fn, secs, args.lambd, args.gamma, args.stack,
-        args.channels, args.cont_lyrs[0], args.cnt_channels)
-
-    librosa.output.write_wav(os.path.join(resultDir, fname), audio / np.max(audio), sr=args.sr)
+    piece_work(args)
 
 
 if __name__ == '__main__':
