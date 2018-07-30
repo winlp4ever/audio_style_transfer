@@ -172,11 +172,12 @@ class GatysNet(object):
             librosa.output.write_wav(sp, audio[0] / np.max(audio), sr=self.sr)
             # sp = os.path.join(self.savepath, 'ep-test-{}.wav'.format(ep))
             # librosa.output.write_wav(sp, audio_test / np.mean(audio_test), sr=self.sr)
-            if not ep + 1% 10:
+            if (ep + 1) % 10 == 0 or i_ < 50:
                 gram = sess.run(self.embeds_s)
                 use.show_gram(gram, ep + 1, self.figdir)
-            if not ep + 1% 100:
                 spectrogram.plotstft(sp, plotpath=os.path.join(self.figdir, 'ep_{}_spectro.png'.format(i)))
+            if i_ < 50:
+                break
 
     def run(self, cont_file, style_file, epochs, lambd=0.1, gamma=0.1, audio_channel=0, start=1):
         session_config = tf.ConfigProto(allow_soft_placement=True)

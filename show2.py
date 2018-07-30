@@ -16,7 +16,7 @@ ARR = [0, 5, 6, 7, 10, 21, 22, 29, 30, 32, 34, 39, 41,
        93, 96, 97, 100, 101, 102, 103, 105, 107, 109, 110, 112, 113,
        114, 119, 127]
 
-def build_graph(length, lyr_stack=1, nb_channels=60):
+def build_graph(length, lyr_stack=1, nb_channels=128):
     config = Cfg()
     with tf.device("/gpu:0"):
         x = tf.Variable(
@@ -27,13 +27,16 @@ def build_graph(length, lyr_stack=1, nb_channels=60):
 
         graph = config.build({'quantized_wav': x}, is_training=True)
 
-        stl = []
-        for i in ARR:
-            embeds = tf.stack([config.extracts[j][0, :, i] for j in range(30)], axis=1)
-            embeds = tf.matmul(embeds, embeds, transpose_a=True) / length
-            #embeds = tf.nn.l2_normalize(embeds)
-            stl.append(embeds)
-        style_embeds = tf.stack(stl, axis=0)
+        if lyr_stack is not None:
+            stl = tf.concat([config.extracts[i] for i in range(lyr_stack * 10, lyr_stack * 10 + 10)], axis=0)
+        else:
+            stl = tf.concat([config.extracts[i] for i in range(30)], axis=0)
+        stl = tf.transpose(stl, perm=[2, 0, 1])
+
+        style_embeds = tf.matmul(stl, tf.transpose(stl, perm=[0, 2, 1]))
+        style_embeds = tf.nn.l2_normalize(style_embeds, axis=(1, 2))
+        if nb_channels < 128:
+            style_embeds = style_embeds[:nb_channels]
         graph.update({'embeds': style_embeds})
 
     return graph
@@ -56,9 +59,9 @@ def read_file(filename, length, sr=16000):
     return auds
 
 
-def get_path(figdir, filename, stack):
+def get_path(figdir, filename, stack, length):
     path = use.crt_t_fol(figdir)
-    path = os.path.join(path, 'showIn::chan0-59f:{}stack{}'.format(filename, stack))
+    path = os.path.join(path, 'showAcrosslayer::chan0-127f:{}stack{}length{}'.format(filename, stack, length))
     if not os.path.exists(path):
         os.makedirs(path)
     return path
@@ -89,7 +92,7 @@ class ShowNet(object):
         filepath = os.path.join(self.srcdir, fn + '.wav')
 
         audios = read_file(filepath, self.length)
-        figdir = get_path(self.figdir, fn, self.stack)
+        figdir = get_path(self.figdir, fn, self.stack, self.length)
 
         session_config = tf.ConfigProto(allow_soft_placement=True)
         session_config.gpu_options.allow_growth = True
@@ -109,13 +112,14 @@ def main():
     parser.add_argument('filename')
     parser.add_argument('--srcdir', nargs='?', default='./data/src')
     parser.add_argument('--figdir', nargs='?', default='./data/fig')
-    parser.add_argument('--stack', nargs='?', default=1, type=int)
-    parser.add_argument('--channels', nargs='?', default=60, type=int)
+    parser.add_argument('--stack', nargs='?', default=None, type=int)
+    parser.add_argument('--channels', nargs='?', default=128, type=int)
+    parser.add_argument('--length', nargs='?', default=16384, type=int)
     parser.add_argument('--ckpt_path', nargs='?', default='./nsynth/model/wavenet-ckpt/model.ckpt-200000')
 
     args = parser.parse_args()
 
-    net = ShowNet(args.srcdir, args.ckpt_path, args.figdir, args.stack, args.channels)
+    net = ShowNet(args.srcdir, args.ckpt_path, args.figdir, args.stack, args.channels, args.length)
     net.show(args.filename)
 
 
