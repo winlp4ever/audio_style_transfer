@@ -165,11 +165,13 @@ class GatysNet(object):
             i_ = i
             audio = sess.run(self.graph['quantized_input'])
             audio = use.inv_mu_law_numpy(audio)
+            audio = audio[0,self.late:-self.late]
+            #print('audio shape {}'.format(audio.shape))
 
             # audio_test = sess.run(a)
 
             sp = os.path.join(self.savepath, 'ep-{}.wav'.format(ep))
-            librosa.output.write_wav(sp, audio[0] / np.max(audio), sr=self.sr)
+            librosa.output.write_wav(sp, audio / np.max(audio), sr=self.sr)
             # sp = os.path.join(self.savepath, 'ep-test-{}.wav'.format(ep))
             # librosa.output.write_wav(sp, audio_test / np.mean(audio_test), sr=self.sr)
             if (ep + 1) % 10 == 0 or i_ < 50:
@@ -192,6 +194,9 @@ class GatysNet(object):
             aud, _ = use.load_audio(cont_file, sr=self.sr, audio_channel=audio_channel)
             st = int(start * self.sr - self.late)
             aud = aud[st: st + self.batch_size]
+            savep = os.path.join(self.savepath, 'ori.wav')
+            librosa.output.write_wav(savep, aud, sr=self.sr)
+            #spectrogram.plotstft(savep, os.path.join(self.figdir, 'ori-spec.png'))
 
             phi_c = self.get_embeds(sess, aud)
             phi = self.get_embeds(sess, aud, is_content=False)

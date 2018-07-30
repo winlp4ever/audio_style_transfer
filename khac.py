@@ -165,11 +165,12 @@ class GatysNet(object):
             i_ = i
             audio = sess.run(self.graph['quantized_input'])
             audio = use.inv_mu_law_numpy(audio)
+            audio = audio[0, self.late: -self.late]
 
             # audio_test = sess.run(a)
 
             sp = os.path.join(self.savepath, 'ep-{}.wav'.format(ep))
-            librosa.output.write_wav(sp, audio[0] / np.max(audio), sr=self.sr)
+            librosa.output.write_wav(sp, audio / np.max(audio), sr=self.sr)
             # sp = os.path.join(self.savepath, 'ep-test-{}.wav'.format(ep))
             # librosa.output.write_wav(sp, audio_test / np.mean(audio_test), sr=self.sr)
             if (ep + 1) % 10 == 0 or i_ < 50:
@@ -200,7 +201,8 @@ class GatysNet(object):
             self.l_bfgs(sess, phi_c, phi_s, epochs=epochs, lambd=lambd, gamma=gamma)
             audio = sess.run(self.graph['quantized_input'])
             audio = use.inv_mu_law_numpy(audio)
-        return audio[0]
+            audio = audio[0, self.late: -self.late]
+        return audio
 
 
 def get_dir(dir, args):
@@ -249,20 +251,15 @@ def main():
     args = parser.parse_args()
 
     secs = args.duration
-    nb_pieces = int(2 * (secs * args.sr / ((args.batch_size // 4096) * 4000)) - 1)
-    step = (args.batch_size // 4096) * 2000
-    late = (args.batch_size - (args.batch_size // 4096) * 4000) // 2
+    piece_width = (args.batch_size // 4096) * 4000
+    nb_pieces = int(secs * args.sr / piece_width)
     audio = np.zeros((secs * args.sr,))
     for piece in range(nb_pieces):
-        aud = piece_work(piece * step, args)
-        fade_in = np.linspace(0, 1, step)
-        fade_out = np.linspace(1, 0, step)
-        audio[piece * step: (piece + 1) * step] *= fade_out
-        audio[piece * step: (piece + 1) * step] += fade_in * aud[late: late + step]
-        audio[(piece + 1) * step: (piece + 2) * step] += aud[late + step: args.batch_size - late]
+        aud = piece_work(piece * piece_width, args)
+        audio[piece * piece_width: (piece + 1) * piece_width] = aud
 
     resultDir = './data/results'
-    fname = 'new{}2{}-{}secs-lmbd{}-gmm{}-stk{}-chnnls{}-lyr{}-cnt{}.wav'.format(
+    fname = 'newt{}2{}-{}secs-lmbd{}-gmm{}-stk{}-chnnls{}-lyr{}-cnt{}.wav'.format(
         args.cont_fn, args.style_fn, secs, args.lambd, args.gamma, args.stack,
         args.channels, args.cont_lyrs[0], args.cnt_channels)
 
