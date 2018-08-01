@@ -176,7 +176,7 @@ class GatysNet(object):
             if (ep + 1) % 10 == 0 or i_ < 50:
                 gram = sess.run(self.embeds_s)
                 use.show_gram(gram, ep + 1, self.figdir)
-                spectrogram.plotstft(sp, plotpath=os.path.join(self.figdir, 'ep_{}_spectro.png'.format(i)))
+                spectrogram.plotstft(sp, plotpath=os.path.join(self.figdir, 'ep_{}_spectro.png'.format(ep + 1)))
             if i_ < 50:
                 break
 
@@ -193,6 +193,7 @@ class GatysNet(object):
             aud, _ = use.load_audio(cont_file, sr=self.sr, audio_channel=audio_channel)
             st = int(start * self.sr - self.late)
             aud = aud[st: st + self.batch_size]
+            #librosa.output.write_wav(os.path.join(self.savepath, 'ori'))
 
             phi_c = self.get_embeds(sess, aud)
             phi = self.get_embeds(sess, aud, is_content=False)

@@ -94,14 +94,14 @@ class GatysNet(object):
         writer.add_graph(sess.graph)
 
         with tf.name_scope('loss'):
-            content_loss = tf.nn.l2_loss(self.embeds_c - phi_c)
-            style_loss = tf.nn.l2_loss(self.embeds_s - phi_s)
-            style_loss *= 1e6
+            content_loss = tf.losses.mean_squared_error(predictions=self.embeds_c, labels=phi_c)
+            style_loss = tf.losses.mean_squared_error(predictions=self.embeds_s, labels=phi_s)
+            style_loss *= 1e4
 
             a = use.inv_mu_law(self.graph['quantized_input'][0])
             regularizer = tf.contrib.signal.stft(a, frame_length=1024, frame_step=512, name='stft')
             regularizer = tf.reduce_mean(use.abs(tf.real(regularizer)) + use.abs(tf.imag(regularizer)))
-            regularizer *= 1e3
+            #regularizer *= 1e3
             loss = content_loss + lambd * style_loss + gamma * regularizer
 
             tf.summary.scalar('content_loss', content_loss)
@@ -117,7 +117,7 @@ class GatysNet(object):
             nonlocal ep
             nonlocal since
             if not i % 5:
-                print('Ep {0:}/{1:}-it{2:}({3:})-tlapse {4:.2f}s-loss{5:.2f}-{6:.2f}-{7:.2f}-{8:.2f}'.
+                print('Ep {0:}/{1:}-it{2:}({3:})-tlapse {4:.2f}s-loss{5:.2f}-{6:.4f}-{7:.4f}-{8:.4f}'.
                       format(ep + 1, epochs, i, i_, time.time() - since, loss_, cont_loss_, style_loss_, regularizer_), end='\r', flush=True)
             writer.add_summary(summ_, global_step=s + i)
             i += 1
@@ -148,8 +148,11 @@ class GatysNet(object):
             if not ep + 1 % 10:
                 gram = sess.run(self.embeds_s)
                 use.show_gatys_gram(gram, ep + 1, self.figdir)
-            if not ep + 1% 100:
-                spectrogram.plotstft(sp, plotpath=os.path.join(self.figdir, 'ep_{}_spectro.png'.format(i)))
+            if not ep + 1% 100 or i_ < 50:
+                spectrogram.plotstft(sp, plotpath=os.path.join(self.figdir, 'ep_{}_spectro.png'.format(ep+1)))
+
+            if i_ < 50:
+                break
         print('\n')
 
     def run(self, cont_file, style_file, epochs, lambd=0.1, gamma=0.0):
