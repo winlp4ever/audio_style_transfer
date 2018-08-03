@@ -1,14 +1,9 @@
 #! /usr/bin/env bash
-for s in 0 1 2 -1; do
-    for l in 100 50 10 5; do
-        for g in 10 50 0 100; do
-            for c in cat-milk crickets drums; do
-                command="python khac.py pachelbel $c --epochs 100 --lambd $l --gamma $g --cont_lyrs 27 --batch_size $(( 16384 * 3 ))"
-                if [ $s -ge 0 ]; then
-                    $command --stack $s
-                else
-                    $command
-                fi
+for c in pachelbel canon female; do
+    for s in gui_solo_mono crickets drums cat-milk exo_flute; do
+        for l in 100 200 500; do
+            for g in 40 60 100; do
+                python acrossLayers.py $c $s --epochs 100 --cont_lyrs 25 --stack 0 --batch_size $((16384*2)) --lambd $l --gamma $g --cmt main_test
             done
         done
     done
