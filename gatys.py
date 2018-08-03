@@ -31,6 +31,7 @@ class GatysNet(object):
         self.figdir = figdir
         self.batch_size = batch_size
         self.sr = sr
+        self.late = (batch_size - (batch_size // 4096) * 4000) // 2
         self.cont_lyr_ids = cont_lyr_ids
         self.style_lyr_ids = style_lyr_ids
         self.graph, self.embeds_c, self.embeds_s = self.build(batch_size, cont_lyr_ids, style_lyr_ids)
@@ -141,21 +142,21 @@ class GatysNet(object):
             s += i
             audio = sess.run(self.graph['quantized_input'])
             audio = use.inv_mu_law_numpy(audio)
+            audio = audio[0, self.late:-self.late]
 
             sp = os.path.join(self.savepath, 'ep-{}.wav'.format(ep))
-            librosa.output.write_wav(sp, audio[0] / np.max(audio[0]), sr=self.sr)
+            librosa.output.write_wav(sp, audio / np.max(audio), sr=self.sr)
 
-            if not ep + 1 % 10:
+            if not ep + 1% 1 or i_ < 50:
                 gram = sess.run(self.embeds_s)
                 use.show_gatys_gram(gram, ep + 1, self.figdir)
-            if not ep + 1% 100 or i_ < 50:
                 spectrogram.plotstft(sp, plotpath=os.path.join(self.figdir, 'ep_{}_spectro.png'.format(ep+1)))
 
             if i_ < 50:
                 break
         print('\n')
 
-    def run(self, cont_file, style_file, epochs, lambd=0.1, gamma=0.0):
+    def run(self, cont_file, style_file, epochs, lambd=0.1, gamma=0.0, start=1.0):
         session_config = tf.ConfigProto(allow_soft_placement=True)
         session_config.gpu_options.allow_growth = True
 
@@ -166,6 +167,11 @@ class GatysNet(object):
 
             phi_s = self.get_style_phi(sess, style_file)
             aud, _ = librosa.load(cont_file, sr=self.sr)
+            st = int(start * self.sr - self.late)
+            aud = aud[st: st + self.batch_size]
+            savep = os.path.join(self.savepath, 'ori.wav')
+            librosa.output.write_wav(savep, aud[self.late:-self.late], sr=self.sr)
+            spectrogram.plotstft(savep, plotpath=os.path.join(self.figdir, 'ori-spec.png'))
             phi_c = self.get_embeds(sess, aud)
             phi = self.get_embeds(sess, aud, is_content=False)
             use.show_gatys_gram(phi, ep=0, figdir=self.figdir)
@@ -186,6 +192,7 @@ def main():
     parser.add_argument('--cont_lyrs', nargs='*', type=int, default=[27])
     parser.add_argument('--lambd', nargs='?', type=float, default=0.1)
     parser.add_argument('--gamma', nargs='?', type=float, default=0.0)
+    parser.add_argument('--start', nargs='?', type=float, default=1.0)
 
     parser.add_argument('--ckpt_path', nargs='?', default='./nsynth/model/wavenet-ckpt/model.ckpt-200000')
     parser.add_argument('--figdir', nargs='?', default='./data/fig')
@@ -202,7 +209,7 @@ def main():
     content, style = map(lambda name: os.path.join(args.dir, name) + '.wav', [args.cont_fn, args.style_fn])
 
     test = GatysNet(savepath, args.ckpt_path, logdir, figdir, args.batch_size, args.sr, args.cont_lyrs, args.style_lyrs)
-    test.run(content, style, epochs=args.epochs, lambd=args.lambd, gamma=args.gamma)
+    test.run(content, style, epochs=args.epochs, lambd=args.lambd, gamma=args.gamma, start=args.start)
 
 
 if __name__ == '__main__':

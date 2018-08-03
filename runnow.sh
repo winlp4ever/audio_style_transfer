@@ -1,9 +1,9 @@
 #! /usr/bin/env bash
 btc=$((16384 * 2))
-for s in cat-milk crickets drums male bongo-loop orchestra; do
-    for l in 10 50 25 100; do
-        for g in 1 0.2 0; do
-            python acrossLayers.py $1 $s --lambd $l --gamma $g --epochs 100 --cont_lyrs 25 --stack 0 --batch_size $btc
+for l in 100 200 500; do
+    for g in 20 0 10 40 100; do
+        for s in drums crickets cat-milk gui_solo_mono exo_flute; do
+            python acrossLayers.py $1 $s --epochs 100 --stack 0 --cont_lyrs 25 --batch_size $((16384*2)) --lambd $l --gamma $g --cmt main_test
         done
     done
 done
