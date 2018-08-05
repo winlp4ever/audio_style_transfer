@@ -147,7 +147,7 @@ class GatysNet(object):
             sp = os.path.join(self.savepath, 'ep-{}.wav'.format(ep))
             librosa.output.write_wav(sp, audio / np.max(audio), sr=self.sr)
 
-            if not ep + 1% 1 or i_ < 50:
+            if not (ep + 1) % 1 or i_ < 50:
                 gram = sess.run(self.embeds_s)
                 use.show_gatys_gram(gram, ep + 1, self.figdir)
                 spectrogram.plotstft(sp, plotpath=os.path.join(self.figdir, 'ep_{}_spectro.png'.format(ep+1)))

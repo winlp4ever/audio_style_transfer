@@ -1,10 +1,13 @@
-import tensorflow as tf
+import glob
+import spectrogram
+import os
 
-u = tf.Variable(initial_value=0, dtype=tf.int32)
+figdir = './data/fig/84'
 
-ass = tf.assign(u, u+1)
-with tf.Session() as sess:
-    sess.run(tf.global_variables_initializer())
-    ass.eval()
-    print(type(u))
-    print(sess.run(u))
+for dir in glob.glob('./data/out/84/**'):
+    base = os.path.basename(dir)
+    if 'gatys' in base:
+        for f in glob.glob(dir):
+            if f.endswith('ori.wav'):
+                fn = os.path.basename(f)
+                spectrogram.plotstft(f, plotpath=os.path.join(figdir, os.path.join(base, fn + '.wav')))
