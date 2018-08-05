@@ -11,4 +11,4 @@ for dir in glob.glob('./data/out/84/**'):
         for f in glob.glob(dir + '/**'):
             if f.endswith('ori.wav'):
                 fn = os.path.basename(f)
-                spectrogram.plotstft(f, plotpath=os.path.join(figdir, os.path.join(base, fn + '.wav')))
+                spectrogram.plotstft(f, plotpath=os.path.join(figdir, os.path.join(base, fn + '.png')))
