@@ -2,9 +2,9 @@ import glob
 import spectrogram
 import os
 
-figdir = './data/fig/84'
+figdir = './data/fig/85'
 
-for dir in glob.glob('./data/out/84/**'):
+for dir in glob.glob('./data/out/85/**'):
     base = os.path.basename(dir)
     if 'gatys' in base:
         print(dir)
