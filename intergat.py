@@ -112,8 +112,8 @@ class GatysNet(object):
     def define_loss(self, name, stl_emb, cnt_emb, lambd, gamma, gpu):
         with tf.device(gpu):
             with tf.name_scope(name):
-                content_loss = tf.reduce_mean(tf.losses.mean_squared_error(predictions=self.embeds_c, labels=cnt_emb))
-                style_loss = tf.reduce_mean(tf.losses.mean_squared_error(predictions=self.embeds_s, labels=stl_emb))
+                content_loss = tf.losses.mean_squared_error(predictions=self.embeds_c, labels=cnt_emb)
+                style_loss = tf.losses.mean_squared_error(predictions=self.embeds_s, labels=stl_emb)
                 style_loss *= 1e3
 
                 a = use.inv_mu_law(self.graph['quantized_input'][0])
@@ -199,6 +199,12 @@ class GatysNet(object):
             savep = os.path.join(self.savepath, 'ori.wav')
             librosa.output.write_wav(savep, aud[self.late:-self.late], sr=self.sr)
             spectrogram.plotstft(savep, plotpath=os.path.join(self.figdir, 'ori-spec.png'))
+
+            style_aud, _ = use.load_audio(target, sr=self.sr, audio_channel=audio_channel)
+            style_aud = style_aud[st: st + self.batch_size]
+            saves = os.path.join(self.savepath, 'style.wav')
+            librosa.output.write_wav(saves, style_aud[self.late: -self.late], sr=self.sr)
+            spectrogram.plotstft(saves, plotpath=os.path.join(self.figdir, 'style-spec.png'))
 
             phi_c = self.get_embeds(sess, aud)
             phi = self.get_embeds(sess, aud, is_content=False)

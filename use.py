@@ -216,9 +216,9 @@ def show_gram(mats, ep=None, figdir=None):
             axs[i, j].imshow(mats[i + j * figs_col], interpolation='nearest', cmap=plt.cm.plasma)
             axs[i, j].set_title('channel {}'.format(i + figs_col * j))
     if ep is not None:
-        fig.savefig(os.path.join(figdir, 'gram-ep{}.png'.format(ep)), dpi=50)
+        fig.savefig(os.path.join(figdir, 'gram-ep{}.png'.format(ep)), dpi=5)
     else:
-        fig.savefig(os.path.join(figdir, 'gram-style.png'), dpi=50)
+        fig.savefig(os.path.join(figdir, 'gram-style.png'), dpi=5)
     plt.close()
 
 def show_gatys_gram(mats, ep=None, figdir=None):
@@ -232,7 +232,7 @@ def show_gatys_gram(mats, ep=None, figdir=None):
     if ep is not None:
         fig.savefig(os.path.join(figdir, 'gram-ep{}.png'.format(ep)), dpi=50)
     else:
-        fig.savefig(os.path.join(figdir, 'gram-style.png'), dpi=100)
+        fig.savefig(os.path.join(figdir, 'gram-style.png'), dpi=5)
     plt.close()
 
 def load_audio(fn, sr, audio_channel):
