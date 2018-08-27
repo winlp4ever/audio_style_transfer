@@ -15,12 +15,6 @@ from sklearn.preprocessing import normalize
 
 tf.logging.set_verbosity(tf.logging.WARN)
 
-ARR = [0, 5, 6, 7, 10, 21, 22, 29, 30, 32, 34, 39, 41,
-       42, 46, 47, 49, 53, 58, 59, 62, 63, 65, 66, 68, 69,
-       71, 72, 73, 74, 76, 78, 80, 81, 84, 85, 86, 87, 90,
-       93, 96, 97, 100, 101, 102, 103, 105, 107, 109, 110, 112, 113,
-       114, 119, 127]
-
 plt.switch_backend('agg')
 
 
@@ -53,7 +47,7 @@ class GatysNet(object):
         config = Cfg()
         with tf.device("/gpu:0"):
             x = tf.Variable(
-                initial_value=np.zeros([1, length]) + 1e-12,
+                initial_value=np.zeros([1, length]) + 1e-6,
                 trainable=True,
                 name='regenerated_wav',
                 dtype=tf.float32
@@ -64,12 +58,13 @@ class GatysNet(object):
             cont_embeds = tf.concat([config.extracts[i][:, :, :cnt_channels] for i in cont_lyr_ids], axis=2)[0]
 
             if stack is not None:
-                stl = tf.concat([config.extracts[i] for i in range(stack * 10, stack * 10 + 10)], axis=0)
+                stl = tf.concat([config.extracts[i] for i in range(20)], axis=0)
             else:
                 stl = tf.concat([config.extracts[i] for i in range(30)], axis=0)
             stl = tf.transpose(stl, perm=[2, 0, 1])
 
-            style_embeds = tf.matmul(stl, tf.transpose(stl, perm=[0, 2, 1]))
+            style_embeds = tf.matmul(stl[:,:10,:], tf.transpose(stl[:,:10,:], perm=[0, 2, 1]))
+            style_embeds += tf.matmul(stl[:,10:,:], tf.transpose(stl[:,10:,:], perm=[0, 2, 1]))
             style_embeds = tf.nn.l2_normalize(style_embeds, axis=(1, 2))
             if nb_channels < 128:
                 style_embeds = style_embeds[:nb_channels]
@@ -93,7 +88,7 @@ class GatysNet(object):
         return sess.run(embeds,
                         feed_dict={self.graph['quantized_input']: use.mu_law_numpy(aud)})
 
-    def get_style_phi(self, sess, filename, max_examples=30, show_mat=True):
+    def get_style_phi(self, sess, filename, max_examples=5, show_mat=True):
         print('load file ...')
         audio, _ = use.load_audio(filename, sr=self.sr, audio_channel=0)
         I = []
@@ -112,8 +107,9 @@ class GatysNet(object):
     def define_loss(self, name, stl_emb, cnt_emb, lambd, gamma, gpu):
         with tf.device(gpu):
             with tf.name_scope(name):
-                content_loss = tf.losses.mean_squared_error(predictions=self.embeds_c, labels=cnt_emb)
-                style_loss = tf.losses.mean_squared_error(predictions=self.embeds_s, labels=stl_emb)
+                content_loss = tf.reduce_mean(tf.square(self.embeds_c - cnt_emb))
+                content_loss *= 10
+                style_loss = tf.reduce_mean(tf.square(self.embeds_s - stl_emb))
                 style_loss *= 1e3
 
                 a = use.inv_mu_law(self.graph['quantized_input'][0])
@@ -172,10 +168,11 @@ class GatysNet(object):
             # audio_test = sess.run(a)
 
             sp = os.path.join(self.savepath, 'ep-{}.wav'.format(ep))
-            librosa.output.write_wav(sp, audio / np.max(audio), sr=self.sr)
+
             # sp = os.path.join(self.savepath, 'ep-test-{}.wav'.format(ep))
             # librosa.output.write_wav(sp, audio_test / np.mean(audio_test), sr=self.sr)
             if (ep + 1) % 1 == 0 or i_ < 50:
+                librosa.output.write_wav(sp, audio / np.max(audio), sr=self.sr)
                 gram = sess.run(self.embeds_s)
                 use.show_gram(gram, ep + 1, self.figdir)
                 spectrogram.plotstft(sp, plotpath=os.path.join(self.figdir, 'ep_{}_spectro.png'.format(ep+1)))
@@ -192,7 +189,7 @@ class GatysNet(object):
             self.load_model(sess)
 
             phi_t = self.get_style_phi(sess, target)
-            phi_s = self.get_style_phi(sess, source)
+            phi_s = self.get_style_phi(sess, source, show_mat=False)
             aud, _ = use.load_audio(cont_file, sr=self.sr, audio_channel=audio_channel)
             st = int(start * self.sr - self.late)
             aud = aud[st: st + self.batch_size]

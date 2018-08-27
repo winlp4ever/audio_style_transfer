@@ -106,17 +106,13 @@ class Cfg(object):
                         name='ae_dilatedconv_%d' % (num_layer + 1))
                     d_enc = tf.nn.relu(d_enc)
 
-                    # ADD-----
-                    #self.extracts.append(d_enc)
-                    # --------
                     d_enc = masked.conv1d(
                         d_enc,
                         num_filters=ae_width,
                         filter_length=1,
                         name='ae_res_%d' % (num_layer + 1))
-                    #self.extracts.append(d_enc)
-
                     enc += d_enc
+                    
                     self.extracts.append(enc)
 
         enc_ = enc
