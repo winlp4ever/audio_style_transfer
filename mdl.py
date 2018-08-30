@@ -112,7 +112,7 @@ class Cfg(object):
                         filter_length=1,
                         name='ae_res_%d' % (num_layer + 1))
                     enc += d_enc
-                    
+
                     self.extracts.append(enc)
 
         enc_ = enc

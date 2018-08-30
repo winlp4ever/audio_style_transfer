@@ -58,13 +58,12 @@ class GatysNet(object):
             cont_embeds = tf.concat([config.extracts[i][:, :, :cnt_channels] for i in cont_lyr_ids], axis=2)[0]
 
             if stack is not None:
-                stl = tf.concat([config.extracts[i] for i in range(20)], axis=0)
+                stl = tf.concat([config.extracts[i] for i in range(stack * 10, stack * 10 + 10)], axis=0)
             else:
                 stl = tf.concat([config.extracts[i] for i in range(30)], axis=0)
             stl = tf.transpose(stl, perm=[2, 0, 1])
 
-            style_embeds = tf.matmul(stl[:,:10,:], tf.transpose(stl[:,:10,:], perm=[0, 2, 1]))
-            style_embeds += tf.matmul(stl[:,10:,:], tf.transpose(stl[:,10:,:], perm=[0, 2, 1]))
+            style_embeds = tf.matmul(stl, tf.transpose(stl, perm=[0, 2, 1]))
             style_embeds = tf.nn.l2_normalize(style_embeds, axis=(1, 2))
             if nb_channels < 128:
                 style_embeds = style_embeds[:nb_channels]
