@@ -15,7 +15,7 @@ abbrevs = {'length': 'l', 'layers': 'lyr', 'n_components': 'cpn', 'examples': 'e
            'lambd': 'lbd', 'batch_size': 'btch', 'stack': 'stk'}
 
 
-def gt_s_path(suppath, exe_file=None, **kwargs):
+def gt_s_path(suppath, **kwargs):
     path = ''
     for name, value in sorted(kwargs.items()):
         if name == 'ins' and value is not None:
@@ -32,8 +32,17 @@ def gt_s_path(suppath, exe_file=None, **kwargs):
         elif name == 'filename':
             path = value + '_' + path
 
-        elif name == 'cont_fn' or name == 'style_fn':
-            path += '-{}-'.format(value)
+        elif name == 'cont_fn':
+            path += '_cnt_{}_'.format(value)
+
+        elif name == 'style_fn':
+            path += '_style_{}_'.format(value)
+
+        elif name == 'gatys':
+            if value:
+                path = 'gatys_' + path
+            else:
+                path = 'ours_' + path
 
         elif not name.endswith(('dir', 'path', 'pieces')) and value is not None:
             if name in abbrevs.keys():
@@ -43,9 +52,8 @@ def gt_s_path(suppath, exe_file=None, **kwargs):
                 for i in value:
                     vals += '-%d' % i
                 value = vals
-            path += '{}-{}_'.format(name, value)
-    if exe_file:
-        path = exe_file + '::' + path
+            path += '_{}_{}_'.format(name, value)
+
     path = os.path.join(suppath, path)
     if not os.path.exists(path):
         os.makedirs(path)
@@ -92,7 +100,7 @@ def inv_mu_law(x, mu=255):
     return out
 
 
-def compare_2_matrix(ws, wt, figdir, save_matrices=False):
+def compare_2_matrix(ws, wt, figdir):
     figs, axs = plt.subplots(1, 2, figsize=(10, 40))
     axs[0].set_aspect('equal')
     im0 = axs[0].imshow(ws, interpolation='nearest', cmap=plt.cm.ocean)

@@ -2,10 +2,10 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 import numpy as np
-from mdl import Cfg
-import use
+from model import Cfg
+import utils
 import librosa
-from mynmf import mynmf
+from nmf_matrixupdate_tensorflow import mynmf
 import time
 import argparse
 import spectrogram
@@ -71,7 +71,7 @@ class GatysNet(object):
         else:
             embeds = self.embeds_s
         return sess.run(embeds,
-                 feed_dict={self.graph['quantized_input']: use.mu_law_numpy(aud)})
+                        feed_dict={self.graph['quantized_input']: utils.mu_law_numpy(aud)})
 
     def get_style_phi(self, sess, filename, max_examples=10, show_mats=True):
         print('load file ...')
@@ -87,7 +87,7 @@ class GatysNet(object):
 
         phi = np.mean(I, axis=0)
         if show_mats:
-            use.show_gatys_gram(phi, figdir=self.figdir)
+            utils.show_gatys_gram(phi, figdir=self.figdir)
         return phi
 
     def l_bfgs(self, sess, phi_c, phi_s, epochs, lambd, gamma):
@@ -99,9 +99,9 @@ class GatysNet(object):
             style_loss = tf.losses.mean_squared_error(predictions=self.embeds_s, labels=phi_s)
             style_loss *= 1e4
 
-            a = use.inv_mu_law(self.graph['quantized_input'][0])
+            a = utils.inv_mu_law(self.graph['quantized_input'][0])
             regularizer = tf.contrib.signal.stft(a, frame_length=1024, frame_step=512, name='stft')
-            regularizer = tf.reduce_mean(use.abs(tf.real(regularizer)) + use.abs(tf.imag(regularizer)))
+            regularizer = tf.reduce_mean(utils.abs(tf.real(regularizer)) + utils.abs(tf.imag(regularizer)))
             #regularizer *= 1e3
             loss = content_loss + lambd * style_loss + gamma * regularizer
 
@@ -141,7 +141,7 @@ class GatysNet(object):
             i_ = i
             s += i
             audio = sess.run(self.graph['quantized_input'])
-            audio = use.inv_mu_law_numpy(audio)
+            audio = utils.inv_mu_law_numpy(audio)
             audio = audio[0, self.late:-self.late]
 
             sp = os.path.join(self.savepath, 'ep-{}.wav'.format(ep))
@@ -149,7 +149,7 @@ class GatysNet(object):
 
             if not (ep + 1) % 1 or i_ < 50:
                 gram = sess.run(self.embeds_s)
-                use.show_gatys_gram(gram, ep + 1, self.figdir)
+                utils.show_gatys_gram(gram, ep + 1, self.figdir)
                 spectrogram.plotstft(sp, plotpath=os.path.join(self.figdir, 'ep_{}_spectro.png'.format(ep+1)))
 
             if i_ < 50:
@@ -174,7 +174,7 @@ class GatysNet(object):
             spectrogram.plotstft(savep, plotpath=os.path.join(self.figdir, 'ori-spec.png'))
             phi_c = self.get_embeds(sess, aud)
             phi = self.get_embeds(sess, aud, is_content=False)
-            use.show_gatys_gram(phi, ep=0, figdir=self.figdir)
+            utils.show_gatys_gram(phi, ep=0, figdir=self.figdir)
 
             self.l_bfgs(sess, phi_c, phi_s, epochs=epochs, lambd=lambd, gamma=gamma)
 
@@ -203,7 +203,7 @@ def main():
 
     args = parser.parse_args()
 
-    savepath, figdir, logdir = map(lambda dir: use.gt_s_path(use.crt_t_fol(dir), 'gatys', **vars(args)),
+    savepath, figdir, logdir = map(lambda dir: utils.gt_s_path(utils.crt_t_fol(dir), 'gatys', **vars(args)),
                                    [args.outdir, args.figdir, args.logdir])
 
     content, style = map(lambda name: os.path.join(args.dir, name) + '.wav', [args.cont_fn, args.style_fn])

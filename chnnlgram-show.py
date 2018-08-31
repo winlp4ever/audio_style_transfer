@@ -1,8 +1,8 @@
 import tensorflow as tf
 import matplotlib.pyplot as plt
-from mdl import Cfg
+from model import Cfg
 import numpy as np
-import use
+import utils
 import librosa
 import argparse
 import os
@@ -51,7 +51,7 @@ def load_model(graph, sess, checkpoint_path):
 def get_embeds(graph, sess, aud):
     if len(aud.shape) == 1:
         aud = np.reshape(aud, [1, -1])
-    return sess.run(graph['embeds'], feed_dict={graph['quantized_input']: use.mu_law_numpy(aud)})
+    return sess.run(graph['embeds'], feed_dict={graph['quantized_input']: utils.mu_law_numpy(aud)})
 
 def read_file(filename, length, sr=16000):
     aud, _ = librosa.load(filename, sr=sr)
@@ -60,7 +60,7 @@ def read_file(filename, length, sr=16000):
 
 
 def get_path(figdir, filename, stack, length):
-    path = use.crt_t_fol(figdir)
+    path = utils.crt_t_fol(figdir)
     path = os.path.join(path, 'showAcrosslayer::chan0-127f:{}stack{}length{}'.format(filename, stack, length))
     if not os.path.exists(path):
         os.makedirs(path)
@@ -103,7 +103,7 @@ class ShowNet(object):
             embeds = [get_embeds(self.graph, sess, aud) for aud in audios]
 
             for i in range(len(embeds)):
-                use.show_gram(embeds[i], i, figdir)
+                utils.show_gram(embeds[i], i, figdir)
                 #show_inten(embeds[i], i, figdir)
 
 

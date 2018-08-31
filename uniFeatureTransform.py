@@ -2,10 +2,10 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 import numpy as np
-from mdl import Cfg
-import use
+from model import Cfg
+import utils
 import librosa
-from mynmf import mynmf
+from nmf_matrixupdate_tensorflow import mynmf
 import time
 import argparse
 import matplotlib.pyplot as plt
@@ -55,7 +55,7 @@ class dvd_test(object):
             aud = aud[: self.batch_size]
             aud = np.reshape(aud, [1, self.batch_size])
         embeds = sess.run(self.embeds,
-                          feed_dict={self.graph['quantized_input']: use.mu_law_numpy(aud)})
+                          feed_dict={self.graph['quantized_input']: utils.mu_law_numpy(aud)})
         return embeds
 
     def get_phi(self, sess, filename, max_exs=50):
@@ -131,7 +131,7 @@ class dvd_test(object):
             optimizer.minimize(sess, loss_callback=loss_tracking, fetches=[loss, summ])
             i_ = i
             audio = sess.run(self.graph['quantized_input'])
-            audio = use.inv_mu_law_numpy(audio)
+            audio = utils.inv_mu_law_numpy(audio)
 
             if not (ep + 1) % 10:
                 enc = self.get_embeds(sess, audio)
@@ -178,9 +178,9 @@ def main():
 
     args = parser.parse_args()
 
-    savepath = use.gt_s_path(use.crt_t_fol(args.outdir), 'ldl', **vars(args))
-    figdir = use.gt_s_path(use.crt_t_fol(args.figdir), 'ldl', **vars(args))
-    logdir = use.gt_s_path(use.crt_t_fol(args.logdir), 'ldl', **vars(args))
+    savepath = utils.gt_s_path(utils.crt_t_fol(args.outdir), 'ldl', **vars(args))
+    figdir = utils.gt_s_path(utils.crt_t_fol(args.figdir), 'ldl', **vars(args))
+    logdir = utils.gt_s_path(utils.crt_t_fol(args.logdir), 'ldl', **vars(args))
 
     delta = lambda name: os.path.join(args.dir, name) + '.wav'
 

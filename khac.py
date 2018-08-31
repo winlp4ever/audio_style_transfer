@@ -3,10 +3,10 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 import numpy as np
-from mdl import Cfg
-import use
+from model import Cfg
+import utils
 import librosa
-from mynmf import mynmf
+from nmf_matrixupdate_tensorflow import mynmf
 import time
 import argparse
 import matplotlib.pyplot as plt
@@ -90,11 +90,11 @@ class GatysNet(object):
         else:
             embeds = self.embeds_s
         return sess.run(embeds,
-                        feed_dict={self.graph['quantized_input']: use.mu_law_numpy(aud)})
+                        feed_dict={self.graph['quantized_input']: utils.mu_law_numpy(aud)})
 
     def get_style_phi(self, sess, filename, max_examples=1, show_mat=True):
         print('load file ...')
-        audio, _ = use.load_audio(filename, sr=self.sr, audio_channel=0)
+        audio, _ = utils.load_audio(filename, sr=self.sr, audio_channel=0)
         I = []
         i = 0
         while i + self.batch_size <= min(len(audio), max_examples * self.batch_size):
@@ -105,7 +105,7 @@ class GatysNet(object):
 
         phi = np.mean(I, axis=0)
         if show_mat:
-            use.show_gram(phi, figdir=self.figdir)
+            utils.show_gram(phi, figdir=self.figdir)
         return phi
 
     def define_loss(self, name, stl_emb, cnt_emb, lambd, gamma, gpu):
@@ -115,9 +115,9 @@ class GatysNet(object):
                 style_loss = tf.nn.l2_loss(self.embeds_s - stl_emb)
                 style_loss *= 1e4
 
-                a = use.inv_mu_law(self.graph['quantized_input'][0])
+                a = utils.inv_mu_law(self.graph['quantized_input'][0])
                 regularizer = tf.contrib.signal.stft(a, frame_length=1024, frame_step=512, name='stft')
-                regularizer = tf.reduce_mean(use.abs(tf.real(regularizer)) + use.abs(tf.imag(regularizer)))
+                regularizer = tf.reduce_mean(utils.abs(tf.real(regularizer)) + utils.abs(tf.imag(regularizer)))
                 regularizer *= 1e3
                 loss = content_loss + lambd * style_loss + gamma * regularizer
 
@@ -164,7 +164,7 @@ class GatysNet(object):
             optim.minimize(sess, loss_callback=loss_tracking, fetches=[loss, cnt_l, stl_l, regu, summ])
             i_ = i
             audio = sess.run(self.graph['quantized_input'])
-            audio = use.inv_mu_law_numpy(audio)
+            audio = utils.inv_mu_law_numpy(audio)
             audio = audio[0, self.late: -self.late]
 
             # audio_test = sess.run(a)
@@ -175,7 +175,7 @@ class GatysNet(object):
             # librosa.output.write_wav(sp, audio_test / np.mean(audio_test), sr=self.sr)
             if (ep + 1) % 10 == 0 or i_ < 50:
                 gram = sess.run(self.embeds_s)
-                use.show_gram(gram, ep + 1, self.figdir)
+                utils.show_gram(gram, ep + 1, self.figdir)
                 spectrogram.plotstft(sp, plotpath=os.path.join(self.figdir, 'ep_{}_spectro.png'.format(ep + 1)))
             if i_ < 50:
                 break
@@ -190,24 +190,24 @@ class GatysNet(object):
             self.load_model(sess)
 
             phi_s = self.get_style_phi(sess, style_file)
-            aud, _ = use.load_audio(cont_file, sr=self.sr, audio_channel=audio_channel)
+            aud, _ = utils.load_audio(cont_file, sr=self.sr, audio_channel=audio_channel)
             st = int(start * self.sr - self.late)
             aud = aud[st: st + self.batch_size]
             #librosa.output.write_wav(os.path.join(self.savepath, 'ori'))
 
             phi_c = self.get_embeds(sess, aud)
             phi = self.get_embeds(sess, aud, is_content=False)
-            use.show_gram(phi, ep=0, figdir=self.figdir)
+            utils.show_gram(phi, ep=0, figdir=self.figdir)
 
             self.l_bfgs(sess, phi_c, phi_s, epochs=epochs, lambd=lambd, gamma=gamma)
             audio = sess.run(self.graph['quantized_input'])
-            audio = use.inv_mu_law_numpy(audio)
+            audio = utils.inv_mu_law_numpy(audio)
             audio = audio[0, self.late: -self.late]
         return audio
 
 
 def get_dir(dir, args):
-    return use.gt_s_path(use.crt_t_fol(dir), 'khacsoft', **vars(args))
+    return utils.gt_s_path(utils.crt_t_fol(dir), 'khacsoft', **vars(args))
 
 
 def get_fpath(fn, args):

@@ -2,10 +2,10 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 import numpy as np
-from mdl import Cfg
-import use
+from model import Cfg
+import utils
 import librosa
-from mynmf import mynmf
+from nmf_matrixupdate_tensorflow import mynmf
 import time
 import argparse
 import matplotlib.pyplot as plt
@@ -73,11 +73,11 @@ class GatysNet(object):
             aud = np.reshape(aud, [1, self.batch_size])
 
         return sess.run(self.embeds,
-                 feed_dict={self.graph['quantized_input']: use.mu_law_numpy(aud)})
+                        feed_dict={self.graph['quantized_input']: utils.mu_law_numpy(aud)})
 
     def get_style_phi(self, sess, filename, max_examples=3):
         print('load file ...')
-        audio, _ = use.load_audio(filename, sr=self.sr, audio_channel=0)
+        audio, _ = utils.load_audio(filename, sr=self.sr, audio_channel=0)
         I = []
         i = 0
         while i + self.batch_size <= min(len(audio), max_examples * self.batch_size):
@@ -124,9 +124,9 @@ class GatysNet(object):
             scloss = tf.nn.l2_loss(self.embeds - phi_sc)
             #stloss *= 1e2
 
-            a = use.inv_mu_law(self.graph['quantized_input'][0])
+            a = utils.inv_mu_law(self.graph['quantized_input'][0])
             regularizer = tf.contrib.signal.stft(a, frame_length=1024, frame_step=512, name='stft')
-            regularizer = tf.reduce_mean(use.abs(tf.real(regularizer)) + use.abs(tf.imag(regularizer)))
+            regularizer = tf.reduce_mean(utils.abs(tf.real(regularizer)) + utils.abs(tf.imag(regularizer)))
             regularizer *= 1e3
             loss = scloss + gamma * regularizer
 
@@ -165,7 +165,7 @@ class GatysNet(object):
             optimizer.minimize(sess, loss_callback=loss_tracking, fetches=[loss, scloss, regularizer, summ])
             i_ = i
             audio = sess.run(self.graph['quantized_input'])
-            audio = use.inv_mu_law_numpy(audio)
+            audio = utils.inv_mu_law_numpy(audio)
 
             #audio_test = sess.run(a)
 
@@ -184,7 +184,7 @@ class GatysNet(object):
             self.load_model(sess)
 
             phi_s = self.get_style_phi(sess, style_file)
-            aud, _ = use.load_audio(cont_file, sr=self.sr, audio_channel=0)
+            aud, _ = utils.load_audio(cont_file, sr=self.sr, audio_channel=0)
             aud = aud[self.batch_size * piece: ]
             phi_c = self.get_embeds(sess, aud)
 
@@ -215,7 +215,7 @@ def main():
 
     args = parser.parse_args()
 
-    savepath, figdir, logdir = map(lambda dir: use.gt_s_path(use.crt_t_fol(dir), 'khacnua', **vars(args)),
+    savepath, figdir, logdir = map(lambda dir: utils.gt_s_path(utils.crt_t_fol(dir), 'khacnua', **vars(args)),
                                    [args.outdir, args.figdir, args.logdir])
 
     content, style = map(lambda name: os.path.join(args.dir, name) + '.wav', [args.cont_fn, args.style_fn])

@@ -7,10 +7,10 @@ import time
 import argparse
 from spectrogram import plotstft
 from rainbowgram import plotcqt
-from mdl import Cfg
+from model import Cfg
 import matplotlib.pyplot as plt
-from mynmf import mynmf
-import use
+from nmf_matrixupdate_tensorflow import mynmf
+import utils
 
 tf.logging.set_verbosity(tf.logging.WARN)
 
@@ -72,7 +72,7 @@ class SpeechNet(object):
         config = Cfg()
         with tf.device("/gpu:0"):
             x = tf.Variable(
-                initial_value=(use.mu_law_numpy(src) if src is not None
+                initial_value=(utils.mu_law_numpy(src) if src is not None
                                else np.zeros([1, length])),
                 trainable=True,
                 name='regenerated_wav'
@@ -95,7 +95,7 @@ class SpeechNet(object):
         if len(aud.shape) == 1:
             aud = np.reshape(aud, [1, self.length])
         embeds = sess.run(self.embeds,
-                          feed_dict={self.graph['quantized_input']: use.mu_law_numpy(aud)})
+                          feed_dict={self.graph['quantized_input']: utils.mu_law_numpy(aud)})
         embeds = np.concatenate(embeds, axis=2)
         return embeds
 
@@ -185,11 +185,11 @@ class SpeechNet(object):
             optimizer.minimize(sess, loss_callback=loss_tracking, fetches=[loss, summ])
             i_ = i
             audio = sess.run(self.graph['quantized_input'])
-            audio = use.inv_mu_law_numpy(audio)
+            audio = utils.inv_mu_law_numpy(audio)
 
             if not (ep + 1) % 10:
                 enc = self.get_embeds(sess, audio)
-                use.vis_actis(audio[0], enc, self.fig_dir, ep, self.layers)
+                utils.vis_actis(audio[0], enc, self.fig_dir, ep, self.layers)
 
             sp = os.path.join(self.spath, 'ep-{}.wav'.format(ep))
             librosa.output.write_wav(sp, audio[0] / np.max(audio[0]), sr=self.sr)
@@ -210,7 +210,7 @@ class SpeechNet(object):
             print('\nEnc shape: {}\n'.format(encodings.shape))
             if m2f < 2:
                 ws, wt = self.cpt_differ(sess, m2f, examples, n_components)
-                encodings = use.transform(encodings, ws, wt, n_components, self.fig_dir)
+                encodings = utils.transform(encodings, ws, wt, n_components, self.fig_dir)
 
             self.l_bfgs(sess, encodings, epochs, lambd)
 
@@ -275,7 +275,7 @@ def main():
 
     args = prs.parse_args()
 
-    crt_path = lambda dir: use.gt_s_path(use.crt_t_fol(dir), **vars(args))
+    crt_path = lambda dir: utils.gt_s_path(utils.crt_t_fol(dir), **vars(args))
     savepath = crt_path(args.out_dir)
     logdir = crt_path(args.logdir)
     plotpath = crt_path(args.fig_dir)

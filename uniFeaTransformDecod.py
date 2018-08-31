@@ -2,14 +2,15 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 import numpy as np
-from mdl import Cfg
-import use
+from model import Cfg
+import utils
 import librosa
-from mynmf import mynmf
+from nmf_matrixupdate_tensorflow import mynmf
 import time
 import argparse
 import matplotlib.pyplot as plt
 from nsynth.wavenet import fastgen
+from numpy.linalg import norm, eigh
 
 
 tf.logging.set_verbosity(tf.logging.WARN)
@@ -24,7 +25,7 @@ class dvd_test(object):
         self.figdir = figdir
         self.batch_size = batch_size
         self.sr = sr
-        self.graph = self.build(batch_size)
+        self.graph, self.embeds = self.build(batch_size)
 
     @staticmethod
     def build(length):
@@ -38,7 +39,8 @@ class dvd_test(object):
 
             graph = config.build({'quantized_wav': x}, is_training=True)
 
-        return graph
+        embeds = tf.transpose(graph['encoding'][0])
+        return graph, embeds
 
     def load_model(self, sess):
         variables = tf.global_variables()
@@ -51,14 +53,12 @@ class dvd_test(object):
         if len(aud.shape) == 1:
             aud = aud[: self.batch_size]
             aud = np.reshape(aud, [1, self.batch_size])
-        embeds = sess.run(self.graph['encoding'],
-                          feed_dict={self.graph['quantized_input']: use.mu_law_numpy(aud)})
-
-        embeds += 15
+        embeds = sess.run(self.embeds,
+                          feed_dict={self.graph['quantized_input']: utils.mu_law_numpy(aud)})
 
         return embeds
 
-    def get_phi(self, sess, filename, n_components=20, epochs=1000):
+    def get_phi(self, sess, filename):
         print('load file ...')
         audio, _ = librosa.load(filename, sr=self.sr)
         I = []
@@ -70,9 +70,27 @@ class dvd_test(object):
             print('I size {}'.format(len(I)), end='\r', flush=True)
             i += self.batch_size
 
-        phi = np.concatenate(I, axis=1)[0].T
-        w, h = mynmf(phi, n_components=n_components, epochs=epochs)
-        return w
+        phi = np.mean(I, axis=0)
+        print('style phi shape {}'.format(phi.shape))
+        return phi
+
+    def factorise(self, phi):
+        m = np.mean(phi)
+        phi_ = phi
+        u = np.dot(phi_, phi_.T) + 1e-12
+        w, v = eigh(u)
+        w = np.sqrt(w)
+        return m, w, v
+
+    def matching(self, phic, phis, alpha=1.0):
+        mc, Dc, Ec = self.factorise(phic)
+        ms, Ds, Es = self.factorise(phis)
+
+        phic_ = np.dot(np.dot(Ec, np.diag(1 / Dc)), Ec.T)
+        phic_ = np.dot(phic_, phic)
+        phisc = np.dot(np.dot(Es, np.diag(Ds)), Es.T)
+        phisc = np.dot(phisc, phic_)
+        return alpha * phisc + (1 - alpha) * phic
 
     def l_bfgs(self, sess, encodings, epochs, lambd):
         writer = tf.summary.FileWriter(logdir=self.logdir)
@@ -114,16 +132,16 @@ class dvd_test(object):
             optimizer.minimize(sess, loss_callback=loss_tracking, fetches=[loss, summ])
             i_ = i
             audio = sess.run(self.graph['quantized_input'])
-            audio = use.inv_mu_law_numpy(audio)
+            audio = utils.inv_mu_law_numpy(audio)
 
             if not (ep + 1) % 10:
                 enc = self.get_embeds(sess, audio)
-                use.vis_actis(audio[0], enc, self.figdir, ep, [29])
+                utils.vis_actis(audio[0], enc, self.figdir, ep, [29])
 
             sp = os.path.join(self.savepath, 'ep-{}.wav'.format(ep))
             librosa.output.write_wav(sp, audio[0] / np.max(audio[0]), sr=self.sr)
 
-    def run(self, main_file, src_file, trg_file, n_components, sample_length=32000):
+    def run(self, src_file, trg_file, alpha=1.0, sample_length=32000):
         session_config = tf.ConfigProto(allow_soft_placement=True)
         session_config.gpu_options.allow_growth = True
 
@@ -132,18 +150,15 @@ class dvd_test(object):
 
             self.load_model(sess)
 
-            ws = self.get_phi(sess, src_file, n_components=n_components)
-            wt = self.get_phi(sess, trg_file, n_components=n_components)
-            aud, _ = librosa.load(main_file, sr=self.sr)
-            enc = self.get_embeds(sess, aud)
-            #enc = use.transform(enc, ws, wt, n_components=n_components, figdir=self.figdir)
-            #self.l_bfgs(sess, enc, epochs=epochs, lambd=0)
-            enc -= 15
-        plt.plot(enc[0])
-        plt.savefig('./data/im.png')
-        print('Saving file ... to fol {{{}}}'.format(self.savepath))
+            phis = self.get_phi(sess, trg_file)
+            aud, _ = librosa.load(src_file, sr=self.sr)
+            phic = self.get_embeds(sess, aud)
+
+            phics = self.matching(phic, phis, alpha=alpha)
+
+        print('phics shape {}'.format(phics.shape))
         fastgen.synthesize(
-            enc,
+            np.expand_dims(phics.T, axis=0),
             save_paths=[os.path.join(self.savepath, 'synthesize.wav')],
             checkpoint_path=self.checkpoint_path,
             samples_per_save=sample_length)
@@ -152,11 +167,10 @@ class dvd_test(object):
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('filename')
     parser.add_argument('src_fn')
     parser.add_argument('trg_fn')
-    parser.add_argument('--n_components', nargs='?', type=int, default=40)
-    parser.add_argument('--batch_size', nargs='?', type=int, default=16384)
+    parser.add_argument('--alpha', nargs='?', type=float, default=1.0)
+    parser.add_argument('--batch_size', nargs='?', type=int, default=64000)
     parser.add_argument('--sr', nargs='?', type=int, default=16000)
 
     parser.add_argument('--ckpt_path', nargs='?', default='./nsynth/model/wavenet-ckpt/model.ckpt-200000')
@@ -169,18 +183,17 @@ def main():
 
     args = parser.parse_args()
 
-    savepath = use.gt_s_path(use.crt_t_fol(args.outdir), **vars(args))
-    figdir = use.gt_s_path(use.crt_t_fol(args.figdir), **vars(args))
-    logdir = use.gt_s_path(use.crt_t_fol(args.logdir), **vars(args))
+    savepath = utils.gt_s_path(utils.crt_t_fol(args.outdir), **vars(args))
+    figdir = utils.gt_s_path(utils.crt_t_fol(args.figdir), **vars(args))
+    logdir = utils.gt_s_path(utils.crt_t_fol(args.logdir), **vars(args))
 
     delta = lambda name: os.path.join(args.dir, name) + '.wav'
 
-    fn = delta(args.filename)
     src_fn = delta(args.src_fn)
     trg_fn = delta(args.trg_fn)
 
     test = dvd_test(savepath, args.ckpt_path, logdir, figdir, args.batch_size, args.sr)
-    test.run(fn, src_fn, trg_fn, args.n_components)
+    test.run(src_fn, trg_fn, args.alpha)
 
 if __name__ == '__main__':
     main()

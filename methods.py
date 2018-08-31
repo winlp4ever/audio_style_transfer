@@ -3,22 +3,15 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 import numpy as np
-from mdl import Cfg
-import use
+from model import cfg
+import utils
 import librosa
-from mynmf import mynmf
 import time
 import argparse
 import matplotlib.pyplot as plt
 import spectrogram
 
 tf.logging.set_verbosity(tf.logging.WARN)
-
-ARR = [0, 5, 6, 7, 10, 21, 22, 29, 30, 32, 34, 39, 41,
-       42, 46, 47, 49, 53, 58, 59, 62, 63, 65, 66, 68, 69,
-       71, 72, 73, 74, 76, 78, 80, 81, 84, 85, 86, 87, 90,
-       93, 96, 97, 100, 101, 102, 103, 105, 107, 109, 110, 112, 113,
-       114, 119, 127]
 
 plt.switch_backend('agg')
 
@@ -29,12 +22,14 @@ class GatysNet(object):
                  checkpoint_path='./nsynth/model/wavenet-ckpt/model.ckpt-200000',
                  logdir='./log',
                  figdir='./data/fig',
-                 stack=1,
+                 stack=0,
                  batch_size=16384,
                  sr=16000,
                  cont_lyr_ids=[29],
-                 nb_channels=60,
-                 cnt_channels=128):
+                 nb_channels=128,
+                 cnt_channels=128,
+                 gatys=False,
+                 style_lyr_ids=None):
         self.logdir = logdir
         self.savepath = savepath
         self.checkpoint_path = checkpoint_path
@@ -43,16 +38,16 @@ class GatysNet(object):
         self.sr = sr
         self.late = (batch_size - (batch_size // 4096) * 4000) // 2
         self.cont_lyr_ids = cont_lyr_ids
-        self.graph, self.embeds_c, self.embeds_s = self.build(batch_size, cont_lyr_ids, stack, nb_channels,
-                                                              cnt_channels)
+        self.graph, self.embeds_c, self.embeds_s, self.gatys = self.build(batch_size, cont_lyr_ids, stack, nb_channels,
+                                                              cnt_channels, gatys, style_lyr_ids)
 
     @staticmethod
-    def build(length, cont_lyr_ids, stack, nb_channels, cnt_channels=128):
+    def build(length, cont_lyr_ids, stack, nb_channels, cnt_channels=128, gatys=False, style_lyr_ids=None):
         tf.reset_default_graph()
-        config = Cfg()
+        config = cfg()
         with tf.device("/gpu:0"):
             x = tf.Variable(
-                initial_value=np.zeros([1, length]) + 1e-12,
+                initial_value=np.zeros([1, length]) + 1e-6,
                 trainable=True,
                 name='regenerated_wav',
                 dtype=tf.float32
@@ -62,17 +57,24 @@ class GatysNet(object):
 
             cont_embeds = tf.concat([config.extracts[i][:, :, :cnt_channels] for i in cont_lyr_ids], axis=2)[0]
 
-            if stack is not None:
+            if style_lyr_ids is not None:
+                assert isinstance(style_lyr_ids, (tuple, list)), "style_lyr_ids must be of type tuple or list!"
+                stl = tf.concat([config.extracts[i] for i in style_lyr_ids], axis=0)
+            elif stack is not None:
                 stl = tf.concat([config.extracts[i] for i in range(stack * 10, stack * 10 + 10)], axis=0)
             else:
                 stl = tf.concat([config.extracts[i] for i in range(30)], axis=0)
-            stl = tf.transpose(stl, perm=[2, 0, 1])
+
+            if not gatys:
+                stl = tf.transpose(stl, perm=[2, 0, 1])
+            else:
+                stl = tf.transpose(stl, perm=[0, 2, 1])
 
             style_embeds = tf.matmul(stl, tf.transpose(stl, perm=[0, 2, 1]))
             style_embeds = tf.nn.l2_normalize(style_embeds, axis=(1, 2))
-            if nb_channels < 128:
+            if nb_channels < 128 and not gatys:
                 style_embeds = style_embeds[:nb_channels]
-        return graph, cont_embeds, style_embeds
+        return graph, cont_embeds, style_embeds, gatys
 
     def load_model(self, sess):
         variables = tf.global_variables()
@@ -90,11 +92,11 @@ class GatysNet(object):
         else:
             embeds = self.embeds_s
         return sess.run(embeds,
-                        feed_dict={self.graph['quantized_input']: use.mu_law_numpy(aud)})
+                        feed_dict={self.graph['quantized_input']: utils.mu_law_numpy(aud)})
 
-    def get_style_phi(self, sess, filename, max_examples=3, show_mat=True):
+    def get_style_phi(self, sess, filename, max_examples=5, show_mat=True):
         print('load file ...')
-        audio, _ = use.load_audio(filename, sr=self.sr, audio_channel=0)
+        audio, _ = utils.load_audio(filename, sr=self.sr, audio_channel=0)
         I = []
         i = 0
         while i + self.batch_size <= min(len(audio), max_examples * self.batch_size):
@@ -105,20 +107,21 @@ class GatysNet(object):
 
         phi = np.mean(I, axis=0)
         if show_mat:
-            use.show_gram(phi, figdir=self.figdir)
+            utils.show_gram(phi, figdir=self.figdir, gatys=self.gatys)
         return phi
 
     def define_loss(self, name, stl_emb, cnt_emb, lambd, gamma, gpu):
         with tf.device(gpu):
             with tf.name_scope(name):
-                content_loss = tf.reduce_mean(tf.losses.mean_squared_error(predictions=self.embeds_c, labels=cnt_emb))
-                style_loss = tf.reduce_mean(tf.losses.mean_squared_error(predictions=self.embeds_s, labels=stl_emb))
+                content_loss = tf.reduce_mean(tf.square(self.embeds_c - cnt_emb))
+                content_loss *= 10
+                style_loss = tf.reduce_mean(tf.square(self.embeds_s - stl_emb))
                 style_loss *= 1e3
 
-                a = use.inv_mu_law(self.graph['quantized_input'][0])
+                a = utils.inv_mu_law(self.graph['quantized_input'][0])
                 regularizer = tf.contrib.signal.stft(a, frame_length=1024, frame_step=512, name='stft')
-                regularizer = tf.reduce_mean(tf.real(regularizer*tf.conj(regularizer)))
-                #regularizer *= 1e3
+                regularizer = tf.reduce_mean(utils.abs(tf.real(regularizer)) + utils.abs(tf.imag(regularizer)))
+
                 loss = content_loss + lambd * style_loss + gamma * regularizer
 
                 tf.summary.scalar('content_loss', content_loss)
@@ -164,24 +167,20 @@ class GatysNet(object):
             optim.minimize(sess, loss_callback=loss_tracking, fetches=[loss, cnt_l, stl_l, regu, summ])
             i_ = i
             audio = sess.run(self.graph['quantized_input'])
-            audio = use.inv_mu_law_numpy(audio)
+            audio = utils.inv_mu_law_numpy(audio)
             audio = audio[0,self.late:-self.late]
-            #print('audio shape {}'.format(audio.shape))
-
-            # audio_test = sess.run(a)
 
             sp = os.path.join(self.savepath, 'ep-{}.wav'.format(ep))
-            librosa.output.write_wav(sp, audio / np.max(audio), sr=self.sr)
-            # sp = os.path.join(self.savepath, 'ep-test-{}.wav'.format(ep))
-            # librosa.output.write_wav(sp, audio_test / np.mean(audio_test), sr=self.sr)
+
             if (ep + 1) % 1 == 0 or i_ < 50:
-                gram = sess.run(self.embeds_s)
-                use.show_gram(gram, ep + 1, self.figdir)
+                librosa.output.write_wav(sp, audio / np.max(audio), sr=self.sr)
+                grams = sess.run(self.embeds_s)
+                utils.show_gram(grams, ep + 1, self.figdir, gatys=self.gatys)
                 spectrogram.plotstft(sp, plotpath=os.path.join(self.figdir, 'ep_{}_spectro.png'.format(ep+1)))
             if i_ < 50:
                 break
 
-    def run(self, cont_file, style_file, epochs, lambd=0.1, gamma=0.1, audio_channel=0, start=1.0):
+    def run(self, cont_file, source, target, epochs, lambd=0.1, gamma=0.1, audio_channel=0, start=1.0):
         session_config = tf.ConfigProto(allow_soft_placement=True)
         session_config.gpu_options.allow_growth = True
 
@@ -190,26 +189,35 @@ class GatysNet(object):
 
             self.load_model(sess)
 
-            phi_s = self.get_style_phi(sess, style_file)
-            aud, _ = use.load_audio(cont_file, sr=self.sr, audio_channel=audio_channel)
+            phi_t = self.get_style_phi(sess, target)
+            phi_s = self.get_style_phi(sess, source, show_mat=False)
+            aud, _ = utils.load_audio(cont_file, sr=self.sr, audio_channel=audio_channel)
             st = int(start * self.sr - self.late)
             aud = aud[st: st + self.batch_size]
             savep = os.path.join(self.savepath, 'ori.wav')
             librosa.output.write_wav(savep, aud[self.late:-self.late], sr=self.sr)
             spectrogram.plotstft(savep, plotpath=os.path.join(self.figdir, 'ori-spec.png'))
 
+            style_aud, _ = utils.load_audio(target, sr=self.sr, audio_channel=audio_channel)
+            style_aud = style_aud[st: st + self.batch_size]
+            saves = os.path.join(self.savepath, 'style.wav')
+            librosa.output.write_wav(saves, style_aud[self.late: -self.late], sr=self.sr)
+            spectrogram.plotstft(saves, plotpath=os.path.join(self.figdir, 'style-spec.png'))
+
             phi_c = self.get_embeds(sess, aud)
             phi = self.get_embeds(sess, aud, is_content=False)
-            use.show_gram(phi, ep=0, figdir=self.figdir)
+            utils.show_gram(phi, ep=0, figdir=self.figdir, gatys=self.gatys)
 
-            self.l_bfgs(sess, phi_c, phi_s, epochs=epochs, lambd=lambd, gamma=gamma)
+            phi = phi + phi_t - phi_s
+            phi = sess.run(tf.nn.l2_normalize(phi, axis=(1, 2)))
+            self.l_bfgs(sess, phi_c, phi, epochs=epochs, lambd=lambd, gamma=gamma)
             audio = sess.run(self.graph['quantized_input'])
-            audio = use.inv_mu_law_numpy(audio)
+            audio = utils.inv_mu_law_numpy(audio)
         return audio[0]
 
 
 def get_dir(dir, args):
-    return use.gt_s_path(use.crt_t_fol(dir), 'adrol', **vars(args))
+    return utils.gt_s_path(utils.crt_t_fol(dir), **vars(args))
 
 
 def get_fpath(fn, args):
@@ -217,38 +225,45 @@ def get_fpath(fn, args):
 
 
 def piece_work(args):
-    savepath, figdir, logdir = map(lambda dir: get_dir(dir, args),
-                                   [args.outdir, args.figdir, args.logdir])
+    savepath, logdir = map(lambda dir: get_dir(dir, args),
+                                   [args.outdir, args.logdir])
+
+    figdir = os.path.join(savepath, 'fig')
+
+    if not os.path.exists(figdir):
+        os.makedirs(figdir)
 
     content, style = map(lambda name: get_fpath(name, args), [args.cont_fn, args.style_fn])
 
     test = GatysNet(savepath, args.ckpt_path, logdir, figdir, args.stack, args.batch_size, args.sr, args.cont_lyrs,
-                    args.channels, args.cnt_channels)
-    return test.run(content, style, epochs=args.epochs, lambd=args.lambd, gamma=args.gamma, start=args.start)
+                    args.channels, args.cnt_channels, args.gatys, args.style_lyrs)
+    return test.run(content, content, style, epochs=args.epochs, lambd=args.lambd, gamma=args.gamma, start=args.start)
 
 
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('cont_fn')
-    parser.add_argument('style_fn')
-    parser.add_argument('--epochs', nargs='?', type=int, default=100)
-    parser.add_argument('--batch_size', nargs='?', type=int, default=16384)
-    parser.add_argument('--sr', nargs='?', type=int, default=16000)
-    parser.add_argument('--stack', nargs='?', type=int, default=None)
+    parser.add_argument('cont_fn', help='relative content file name')
+    parser.add_argument('style_fn', help='relative style file name')
+    parser.add_argument('--epochs', help='number of epochs, each epoch contains 100 iterations of optimization',
+                        nargs='?', type=int, default=100)
+    parser.add_argument('--batch_size', help='length of output signal, must be divided by 4096', nargs='?', type=int, default=16384)
+    parser.add_argument('--sr', help='sampling rate, default to 16kHz', nargs='?', type=int, default=16000)
+    parser.add_argument('--stack', help='stack of layers chosen for computing style loss. Have effects only if style_lyrs is None. There are 3 stacks, each of 10 layers. If None'
+                                        ' then all three stacks will be taken into account', nargs='?', type=int, default=None)
     parser.add_argument('--cont_lyrs', nargs='*', type=int, default=[29])
-    parser.add_argument('--lambd', nargs='?', type=float, default=0.1)
-    parser.add_argument('--gamma', nargs='?', type=float, default=0.00)
-    parser.add_argument('--channels', nargs='?', type=int, default=128)
-    parser.add_argument('--cnt_channels', nargs='?', type=int, default=128)
+    parser.add_argument('--style_lyrs', nargs='*', type=int)
+    parser.add_argument('--lambd', help='style loss scalar coefficient', nargs='?', type=float, default=100.0)
+    parser.add_argument('--gamma', help='regularizer scalar coefficient', nargs='?', type=float, default=0.0)
+    parser.add_argument('--channels', help='how many channels taken into account for style loss', nargs='?', type=int, default=128)
+    parser.add_argument('--cnt_channels', help='how many channels taken into account for content loss', nargs='?', type=int, default=128)
     parser.add_argument('--start', nargs='?', type=float, default=1.0)
-    #parser.add_argument('--duration', nargs='?', type=int, default=1)
+    parser.add_argument('--gatys', nargs='?', type=bool, default=False, const=True)
 
-    parser.add_argument('--ckpt_path', nargs='?', default='./nsynth/model/wavenet-ckpt/model.ckpt-200000')
-    parser.add_argument('--figdir', nargs='?', default='./data/fig')
-    parser.add_argument('--dir', nargs='?', default='./data/src')
-    parser.add_argument('--outdir', nargs='?', default='./data/out')
-    parser.add_argument('--logdir', nargs='?', default='./log')
+    parser.add_argument('--ckpt_path', help="path to the pretrained model's checkpoint path", nargs='?', default='./nsynth/model/wavenet-ckpt/model.ckpt-200000')
+    parser.add_argument('--dir', help='path to source files, should be where to store reference style and content files', nargs='?', default='./data/src')
+    parser.add_argument('--outdir', help='path to output', nargs='?', default='./data/out')
+    parser.add_argument('--logdir', help='path to logs', nargs='?', default='./log')
     parser.add_argument('--cmt')
 
     args = parser.parse_args()

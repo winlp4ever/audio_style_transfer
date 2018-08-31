@@ -1,4 +1,4 @@
-from mdl import Cfg
+from model import Cfg
 import numpy as np
 import matplotlib.pyplot as plt
 import os
@@ -8,7 +8,7 @@ import librosa
 import argparse
 import time
 from spectrogram import plotstft
-import use
+import utils
 
 plt.switch_backend('agg')
 
@@ -126,9 +126,9 @@ class ShowOff(object):
                         actis = np.concatenate(actis, axis=0)
                         assert (actis >= 0).all()
                         if ens:
-                            use.vis_actis_ens(aud_, actis, figdir, i, self.layer_ids, nb_channels, dspl, output_file)
+                            utils.vis_actis_ens(aud_, actis, figdir, i, self.layer_ids, nb_channels, dspl, output_file)
                         else:
-                            use.vis_actis(aud_, actis, figdir, i, self.layer_ids, nb_channels, dspl, output_file)
+                            utils.vis_actis(aud_, actis, figdir, i, self.layer_ids, nb_channels, dspl, output_file)
 
                     print('example {} -- iter {}'.format(i, j), end='\r', flush=True)
                     j += 1
@@ -177,7 +177,7 @@ def main():
 
     args = prs.parse_args()
 
-    figdir = use.crt_t_fol(args.figdir)
+    figdir = utils.crt_t_fol(args.figdir)
     showoff = ShowOff(args.tfpath, args.ckptpath, figdir, args.layers, args.length, args.sr)
     showoff.run(args.ins, args.source, args.qualities, args.examples, args.nb_channels, args.dspl, args.output_file,
                 args.ens, args.cmt)

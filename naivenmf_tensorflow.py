@@ -4,7 +4,7 @@ import time
 from numpy.linalg import norm
 
 from sklearn.decomposition import NMF
-from mynmf import mynmf
+from nmf_matrixupdate_tensorflow import mynmf
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
