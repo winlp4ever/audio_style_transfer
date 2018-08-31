@@ -7,7 +7,7 @@ import time
 import argparse
 from spectrogram import plotstft
 from rainbowgram import plotcqt
-from model import Cfg
+from model import cfg
 import matplotlib.pyplot as plt
 from nmf_matrixupdate_tensorflow import mynmf
 import utils
@@ -69,7 +69,7 @@ class SpeechNet(object):
 
         src, trg = load_wav(src_path, length, sr), load_wav(trg_path, length, sr)
 
-        config = Cfg()
+        config = cfg()
         with tf.device("/gpu:0"):
             x = tf.Variable(
                 initial_value=(utils.mu_law_numpy(src) if src is not None

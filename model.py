@@ -5,7 +5,7 @@ from nsynth import utils
 from nsynth.wavenet import masked
 
 
-class Cfg(object):
+class cfg(object):
     """Configuration object that helps manage the graph."""
 
     def __init__(self, train_path=None):

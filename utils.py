@@ -44,6 +44,10 @@ def gt_s_path(suppath, **kwargs):
             else:
                 path = 'ours_' + path
 
+        elif name == 'sr':
+            value /= 1000
+            path += '_sr{}kHz_'.format(value)
+
         elif not name.endswith(('dir', 'path', 'pieces')) and value is not None:
             if name in abbrevs.keys():
                 name = abbrevs[name]
@@ -215,7 +219,8 @@ def vis_mats(phis, phit, layer_ids, figdir=None, srcname=None, trgname=None):
         fig.show()
     plt.close()
 
-def show_gram(mats, ep=None, figdir=None):
+
+def show_our_gram(mats, ep=None, figdir=None):
     figs_col = 8
     nb_chnnls = mats.shape[0]
     fig, axs = plt.subplots(figs_col, nb_chnnls // figs_col, figsize=(12 * nb_chnnls // figs_col, 10 * figs_col))
@@ -229,19 +234,28 @@ def show_gram(mats, ep=None, figdir=None):
         fig.savefig(os.path.join(figdir, 'gram-style.png'), dpi=5)
     plt.close()
 
+
 def show_gatys_gram(mats, ep=None, figdir=None):
     figs_col = 2
     nb_lyrs = mats.shape[0]
-    fig, axs = plt.subplots(figs_col, nb_lyrs // figs_col, figsize=(12 * nb_lyrs // figs_col, 100))
+    fig, axs = plt.subplots(figs_col, nb_lyrs // figs_col, figsize=(12 * nb_lyrs // figs_col, 12 * figs_col))
     for i in range(figs_col):
         for j in range(nb_lyrs // figs_col):
             axs[i, j].imshow(mats[i + j * figs_col], interpolation='nearest', cmap=plt.cm.plasma)
             axs[i, j].set_title('channel {}'.format(i + figs_col * j))
     if ep is not None:
-        fig.savefig(os.path.join(figdir, 'gram-ep{}.png'.format(ep)), dpi=50)
+        fig.savefig(os.path.join(figdir, 'gram-ep{}.png'.format(ep)), dpi=20)
     else:
-        fig.savefig(os.path.join(figdir, 'gram-style.png'), dpi=5)
+        fig.savefig(os.path.join(figdir, 'gram-style.png'), dpi=20)
     plt.close()
+
+
+def show_gram(mats, ep=None, figdir=None, gatys=False):
+    if gatys:
+        show_gatys_gram(mats, ep, figdir)
+    else:
+        show_our_gram(mats, ep, figdir)
+
 
 def load_audio(fn, sr, audio_channel):
     audio, sr = librosa.load(fn, sr=sr, mono=False)

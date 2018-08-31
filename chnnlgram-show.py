@@ -1,6 +1,6 @@
 import tensorflow as tf
 import matplotlib.pyplot as plt
-from model import Cfg
+from model import cfg
 import numpy as np
 import utils
 import librosa
@@ -17,7 +17,7 @@ ARR = [0, 5, 6, 7, 10, 21, 22, 29, 30, 32, 34, 39, 41,
        114, 119, 127]
 
 def build_graph(length, lyr_stack=1, nb_channels=128):
-    config = Cfg()
+    config = cfg()
     with tf.device("/gpu:0"):
         x = tf.Variable(
             initial_value=(np.zeros([1, length])),
@@ -103,7 +103,7 @@ class ShowNet(object):
             embeds = [get_embeds(self.graph, sess, aud) for aud in audios]
 
             for i in range(len(embeds)):
-                utils.show_gram(embeds[i], i, figdir)
+                utils.show_our_gram(embeds[i], i, figdir)
                 #show_inten(embeds[i], i, figdir)
 
 

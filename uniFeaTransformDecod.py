@@ -2,7 +2,7 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 import numpy as np
-from model import Cfg
+from model import cfg
 import utils
 import librosa
 from nmf_matrixupdate_tensorflow import mynmf
@@ -29,7 +29,7 @@ class dvd_test(object):
 
     @staticmethod
     def build(length):
-        config = Cfg()
+        config = cfg()
         with tf.device("/gpu:0"):
             x = tf.Variable(
                 initial_value=(np.zeros([1, length])),

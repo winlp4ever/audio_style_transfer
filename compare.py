@@ -1,4 +1,4 @@
-from model import Cfg
+from model import cfg
 import numpy as np
 import matplotlib.pyplot as plt
 import os
@@ -78,7 +78,7 @@ class ShowOff(object):
         it = self.data.make_one_shot_iterator()
         id, src, qua, aud = it.get_next()
 
-        config = Cfg()
+        config = cfg()
         with tf.device("/gpu:0"):
             x = mu_law(aud[:self.length])
             x = tf.reshape(x, shape=[1, self.length])

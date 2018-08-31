@@ -3,7 +3,7 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 import numpy as np
-from model import Cfg
+from model import cfg
 import utils
 import librosa
 from nmf_matrixupdate_tensorflow import mynmf
@@ -49,7 +49,7 @@ class GatysNet(object):
     @staticmethod
     def build(length, cont_lyr_ids, stack, nb_channels, cnt_channels=128):
         tf.reset_default_graph()
-        config = Cfg()
+        config = cfg()
         with tf.device("/gpu:0"):
             x = tf.Variable(
                 initial_value=np.zeros([1, length]) + 1e-12,
@@ -105,7 +105,7 @@ class GatysNet(object):
 
         phi = np.mean(I, axis=0)
         if show_mat:
-            utils.show_gram(phi, figdir=self.figdir)
+            utils.show_our_gram(phi, figdir=self.figdir)
         return phi
 
     def define_loss(self, name, stl_emb, cnt_emb, lambd, gamma, gpu):
@@ -175,7 +175,7 @@ class GatysNet(object):
             # librosa.output.write_wav(sp, audio_test / np.mean(audio_test), sr=self.sr)
             if (ep + 1) % 10 == 0 or i_ < 50:
                 gram = sess.run(self.embeds_s)
-                utils.show_gram(gram, ep + 1, self.figdir)
+                utils.show_our_gram(gram, ep + 1, self.figdir)
                 spectrogram.plotstft(sp, plotpath=os.path.join(self.figdir, 'ep_{}_spectro.png'.format(ep + 1)))
             if i_ < 50:
                 break
@@ -197,7 +197,7 @@ class GatysNet(object):
 
             phi_c = self.get_embeds(sess, aud)
             phi = self.get_embeds(sess, aud, is_content=False)
-            utils.show_gram(phi, ep=0, figdir=self.figdir)
+            utils.show_our_gram(phi, ep=0, figdir=self.figdir)
 
             self.l_bfgs(sess, phi_c, phi_s, epochs=epochs, lambd=lambd, gamma=gamma)
             audio = sess.run(self.graph['quantized_input'])
