@@ -1,0 +1,11 @@
+nsynth/model/*
+nsynth/test_data/*
+test_data/*
+output/*
+data/*
+.idea/*
+*.pyc
+*.pyo
+tmp/*
+log/*
+test/*
