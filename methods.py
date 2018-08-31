@@ -175,7 +175,7 @@ class GatysNet(object):
             if (ep + 1) % 1 == 0 or i_ < 50:
                 librosa.output.write_wav(sp, audio / np.max(audio), sr=self.sr)
                 grams = sess.run(self.embeds_s)
-                utils.show_our_gram(grams, ep + 1, self.figdir, gatys=self.gatys)
+                utils.show_gram(grams, ep + 1, self.figdir, gatys=self.gatys)
                 spectrogram.plotstft(sp, plotpath=os.path.join(self.figdir, 'ep_{}_spectro.png'.format(ep+1)))
             if i_ < 50:
                 break
